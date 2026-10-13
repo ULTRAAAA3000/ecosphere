@@ -93,7 +93,7 @@ $('bMeteor').addEventListener('click', () => spawnMeteor());
 $('bStorm').addEventListener('click', () => { S.storm = 1; log('[WARN] Приближается пылевая буря!', 'warn'); ach('storm', 'Пережил бурю'); });
 
 /* ---------- геометрия ---------- */
-const geom = () => { const R = Math.min(W, H) * .36; return { cx: W / 2, cy: H * .56, R }; };
+const geom = () => { const R = Math.min(W, H) * .4; return { cx: W / 2, cy: H * .58, R }; };
 function resize() {
   const r = cv.getBoundingClientRect(), d = window.devicePixelRatio || 1;
   W = r.width; H = r.height; cv.width = W * d; cv.height = H * d; ctx.setTransform(d, 0, 0, d, 0, 0);
@@ -143,42 +143,92 @@ function bg(amb) {
   });
   ctx.globalAlpha = 1;
 }
-function planet(g, k, sunA) {
-  const base = mix(RED, GREEN, k), dark = mix(DR, DG, k), gc = mix([232, 122, 69], [60, 220, 170], k);
-  const halo = ctx.createRadialGradient(g.cx, g.cy, g.R * .9, g.cx, g.cy, g.R * (1.3 + P.atmo / 400));
-  halo.addColorStop(0, `rgba(${gc},${.25 + .4 * P.atmo / 100})`); halo.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(g.cx, g.cy, g.R * 1.45, 0, TAU); ctx.fill();
-  ctx.save(); ctx.beginPath(); ctx.arc(g.cx, g.cy, g.R, 0, TAU); ctx.clip();
-  const gr = ctx.createRadialGradient(g.cx - g.R * .3, g.cy - g.R * .3, g.R * .1, g.cx, g.cy, g.R);
-  gr.addColorStop(0, `rgb(${base})`); gr.addColorStop(1, `rgb(${dark})`);
-  ctx.fillStyle = gr; ctx.fillRect(g.cx - g.R, g.cy - g.R, g.R * 2, g.R * 2);
-  // материки / озёра, вращаются вместе с планетой
-  blobs.forEach(b => {
-    const l = b.lon + S.rot, c = Math.cos(l); if (c < -.1) return;
-    const x = g.cx + g.R * Math.cos(b.lat) * Math.sin(l), y = g.cy + g.R * Math.sin(b.lat), r = b.r * g.R * Math.max(.2, c);
-    if (b.lake) { ctx.fillStyle = `rgba(60,150,230,${.65 * P.water / 100})`; ctx.beginPath(); ctx.ellipse(x, y, r * .8, r * .5, 0, 0, TAU); ctx.fill(); }
-    else { ctx.fillStyle = `rgba(${mix([140, 60, 36], [14, 120, 70], k)},${.15 + .5 * k})`; ctx.beginPath(); ctx.arc(x, y, r * (.5 + k), 0, TAU); ctx.fill(); }
-  });
-  craters.forEach(c => { ctx.strokeStyle = 'rgba(40,10,5,.6)'; ctx.fillStyle = 'rgba(30,8,4,.35)'; ctx.beginPath(); ctx.arc(g.cx + c.x * g.R, g.cy + c.y * g.R, c.r * g.R, 0, TAU); ctx.fill(); ctx.stroke(); });
-  // облака
-  clouds.forEach(c => {
-    const l = c.lon + S.rot * 1.4, cs = Math.cos(l); if (cs < 0) return;
-    ctx.fillStyle = `rgba(255,255,255,${.5 * cs * (.15 + P.water / 130)})`;
-    ctx.beginPath(); ctx.ellipse(g.cx + g.R * Math.cos(c.lat) * Math.sin(l), g.cy + g.R * Math.sin(c.lat) * .95, c.w * g.R * cs, c.w * g.R * .22, 0, 0, TAU); ctx.fill();
-  });
-  // терминатор: освещённая сторона вращается вместе со временем
-  const lx = g.cx + Math.cos(sunA) * g.R * .55, ly = g.cy - Math.abs(Math.sin(sunA)) * g.R * .15;
-  const sh = ctx.createRadialGradient(lx, ly, g.R * .2, g.cx, g.cy, g.R * 1.05);
-  sh.addColorStop(0, 'rgba(0,0,0,0)'); sh.addColorStop(.7, 'rgba(4,6,16,.5)'); sh.addColorStop(1, 'rgba(2,3,10,.9)');
-  ctx.fillStyle = sh; ctx.fillRect(g.cx - g.R, g.cy - g.R, g.R * 2, g.R * 2);
-  // дождь
-  if (T.rain) {
-    ctx.strokeStyle = 'rgba(140,200,255,.55)'; ctx.lineWidth = 1; ctx.beginPath();
-    for (let i = 0; i < 40; i++) { const d = drops[i] || (drops[i] = { x: rnd(-1, 1), y: rnd(-1, 1) }); d.y += .03; if (d.y > 1) { d.y = -1; d.x = rnd(-1, 1); } const x = g.cx + d.x * g.R, y = g.cy + d.y * g.R; ctx.moveTo(x, y); ctx.lineTo(x - 2, y + 9); }
-    ctx.stroke();
+/* ---------- процедурная планета (карты шума + пиксельный рендер сферы) ---------- */
+const MW = 1024, MH = 512;
+function fbm(seed, oct) {
+  let s = seed; const rn = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  const out = new Float32Array(MW * MH); let amp = 1, tot = 0;
+  for (let o = 0; o < oct; o++) {
+    const gx = 4 << o, gy = 2 << o, lat = Array.from({ length: gx * (gy + 1) }, rn);
+    for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
+      const fx = x / MW * gx, fy = y / MH * gy, x0 = fx | 0, y0 = fy | 0, tx = fx - x0, ty = fy - y0;
+      const sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty), x1 = (x0 + 1) % gx;
+      const a = lat[y0 * gx + x0], b = lat[y0 * gx + x1], c = lat[(y0 + 1) * gx + x0], d = lat[(y0 + 1) * gx + x1];
+      out[y * MW + x] += amp * lerp(lerp(a, b, sx), lerp(c, d, sx), sy);
+    }
+    tot += amp; amp *= .52;
   }
-  ctx.restore();
-  ctx.strokeStyle = `rgba(${gc},.35)`; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(g.cx, g.cy, g.R, 0, TAU); ctx.stroke();
+  let mn = 9, mx = -9; for (let i = 0; i < out.length; i++) { out[i] /= tot; mn = Math.min(mn, out[i]); mx = Math.max(mx, out[i]); }
+  for (let i = 0; i < out.length; i++) out[i] = (out[i] - mn) / (mx - mn);
+  return out;
+}
+const HM = fbm(7, 6), VM = fbm(31, 5), CM = fbm(99, 5);
+const NN = 320, pc = document.createElement('canvas'); pc.width = pc.height = NN;
+const pctx = pc.getContext('2d'), img = pctx.createImageData(NN, NN), D = img.data;
+const cl = (v, a = 0, b = 1) => v < a ? a : v > b ? b : v;
+const sm = (a, b, v) => { const t = cl((v - a) / (b - a)); return t * t * (3 - 2 * t); };
+function crater(lon, lat, r) {
+  const cx = ((lon / TAU % 1 + 1) % 1) * MW, cy = (lat / Math.PI + .5) * MH;
+  for (let dy = -r; dy <= r; dy++) for (let dx = -r * 2; dx <= r * 2; dx++) {
+    const d = Math.hypot(dx / 2, dy) / r; if (d > 1.25) continue;
+    const x = ((cx + dx) % MW + MW) % MW | 0, y = cl(cy + dy | 0, 0, MH - 1), i = y * MW + x;
+    HM[i] = cl(HM[i] - (d < 1 ? .22 * (1 - d * d) : 0) + (d > .85 && d < 1.2 ? .06 : 0));
+  }
+}
+const NP = NN * NN, tNX = new Float32Array(NP), tNY = new Float32Array(NP), tNZ = new Float32Array(NP), tLON = new Float32Array(NP), tV = new Int16Array(NP), tA = new Float32Array(NP), tLAT = new Float32Array(NP);
+(() => { const h = NN / 2; for (let py = 0; py < NN; py++) for (let px = 0; px < NN; px++) { const i = py * NN + px, nx = (px - h) / h, ny = (py - h) / h, r2 = nx * nx + ny * ny; if (r2 >= 1) { tA[i] = -1; continue; } const nz = Math.sqrt(1 - r2), lat = Math.asin(ny); tNX[i] = nx; tNY[i] = ny; tNZ[i] = nz; tLAT[i] = lat; tLON[i] = Math.atan2(nx, nz); tV[i] = Math.min(MH - 2, (lat / Math.PI + .5) * MH | 0); tA[i] = cl((1 - Math.sqrt(r2)) * NN * .45, 0, 1); } })();
+function renderPlanet(k, sunA) {
+  const sl = P.water / 100 * .66, capLat = 1.45 - P.temp / 100 * .75;
+  const L = [Math.cos(sunA) * .85, -.38, .5 + .25 * Math.sin(sunA * .7)], ln = Math.hypot(...L); L.forEach((v, i) => L[i] = v / ln);
+  const hv = [L[0], L[1], L[2] + 1], hn = Math.hypot(...hv); hv.forEach((v, i) => hv[i] = v / hn);
+  const ac = mix([255, 140, 80], [110, 190, 255], Math.max(P.atmo / 100, k)), N2 = NN / 2;
+  const rotU = S.rot / TAU * MW, drift = S.t * .16 | 0;
+  for (let p = 0; p < NP; p++) {
+    const o = p * 4;
+    if (tA[p] < 0) { D[o + 3] = 0; continue; }
+    const nx = tNX[p], ny = tNY[p], nz = tNZ[p], lat = tLAT[p], v = tV[p];
+    const u = ((((tLON[p] / TAU) * MW + rotU) % MW) + MW) % MW | 0, i = v * MW + u, i2 = v * MW + (u + 1) % MW;
+    const h = HM[i], vg = VM[i];
+    const dot = nx * L[0] + ny * L[1] + nz * L[2];
+    let lit = sm(-.12, .35, dot), col, spec = 0, em = 0;
+    if (h < sl) {
+      const dp = cl((sl - h) / Math.max(sl, .01)); col = mix([70, 190, 215], [8, 38, 105], Math.pow(dp, .6));
+      spec = Math.pow(cl(nx * hv[0] + ny * hv[1] + nz * hv[2]), 60) * .9 * lit;
+    } else {
+      const hh = (h - sl) / (1 - sl);
+      col = mix(mix([84, 34, 24], [196, 108, 62], hh), [226, 168, 112], sm(.7, 1, hh) * (1 - k * .6));
+      const veg = cl((k * 1.35 - vg * .75 - hh * .45) * 3.2);
+      if (veg > 0) { col = mix(col, mix([8, 62, 40], [96, 190, 84], cl(vg * 2.2 - hh * .5 - .25)), veg); em = veg * (1 - lit) * (VM[i2] > .55 ? 1 : 0); }
+      lit = cl(lit + (HM[i] - HM[i2]) * 22 * L[0] + (HM[i] - HM[i + MW]) * 22 * L[1]);
+      if (hh < .03) col = mix(col, [240, 230, 200], .5 * (1 - hh / .03));
+    }
+    const polar = Math.abs(lat) + (CM[i] - .5) * .35 - capLat;
+    if (polar > 0) { col = mix(col, [236, 244, 252], sm(0, .1, polar)); spec = 0; }
+    const cd = cl((CM[v * MW + (u + drift) % MW] - .8 + P.water / 100 * .22) * 5) * .8;
+    col = mix(col, [255, 255, 255], cd * (.6 + .4 * lit));
+    const rim = Math.pow(1 - nz, 2.6) * (.35 + .65 * P.atmo / 100) * (.25 + .75 * cl(lit + .3));
+    const amb = .05 + .95 * lit;
+    D[o] = cl(col[0] * amb + ac[0] * rim * .9 + spec * 255 + em * 20, 0, 255);
+    D[o + 1] = cl(col[1] * amb + ac[1] * rim * .9 + spec * 255 + em * 190, 0, 255);
+    D[o + 2] = cl(col[2] * amb + ac[2] * rim * .9 + spec * 255 + em * 120, 0, 255);
+    D[o + 3] = tA[p] * 255;
+  }
+  pctx.putImageData(img, 0, 0);
+}
+function planet(g, k, sunA) {
+  const ac = mix([255, 140, 80], [90, 210, 255], Math.max(P.atmo / 100, k));
+  const halo = ctx.createRadialGradient(g.cx, g.cy, g.R * .96, g.cx, g.cy, g.R * 1.5);
+  halo.addColorStop(0, `rgba(${ac},${.35 + .35 * P.atmo / 100})`); halo.addColorStop(.35, `rgba(${ac},.1)`); halo.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(g.cx, g.cy, g.R * 1.5, 0, TAU); ctx.fill();
+  if (!planet.f || ((S.t | 0) & 1)) renderPlanet(k, sunA); planet.f = 1;
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(pc, g.cx - g.R, g.cy - g.R, g.R * 2, g.R * 2);
+  if (T.rain) {
+    ctx.save(); ctx.beginPath(); ctx.arc(g.cx, g.cy, g.R, 0, TAU); ctx.clip();
+    ctx.strokeStyle = 'rgba(150,210,255,.5)'; ctx.lineWidth = 1; ctx.beginPath();
+    for (let i = 0; i < 60; i++) { const d = drops[i] || (drops[i] = { x: rnd(-1, 1), y: rnd(-1, 1) }); d.y += .035; if (d.y > 1) { d.y = -1; d.x = rnd(-1, 1); } const x = g.cx + d.x * g.R, y = g.cy + d.y * g.R; ctx.moveTo(x, y); ctx.lineTo(x - 2, y + 11); }
+    ctx.stroke(); ctx.restore();
+  }
 }
 function tree(x, y, h, k, c) {
   ctx.fillStyle = c;
@@ -191,7 +241,7 @@ function drawDomes(g, k, night) {
     const on = !d.auto || d.i < n; d.g = lerp(d.g, on ? 1 : 0, .06);
     if (d.g > .02) {
       const ang = -Math.PI / 2 + d.a;
-      act.push({ x: g.cx + Math.cos(ang) * g.R * .985, y: g.cy + Math.sin(ang) * g.R * .985, ang, s: g.R * (.075 + .09 * (.3 + P.atmo / 140)) * d.g * (.9 + (d.i || 3) % 3 * .12) });
+      act.push({ x: g.cx + Math.cos(ang) * g.R * .985, y: g.cy + Math.sin(ang) * g.R * .985, ang, s: g.R * (.1 + .1 * (.3 + P.atmo / 140)) * d.g * (.9 + (d.i || 3) % 3 * .12) });
     }
   });
   act.sort((a, b) => a.x - b.x);
@@ -250,7 +300,7 @@ function draw() {
     const tg = ctx.createLinearGradient(m.x, m.y, m.x - 30, m.y - 130); tg.addColorStop(0, 'rgba(255,200,120,.95)'); tg.addColorStop(1, 'rgba(255,100,40,0)');
     ctx.strokeStyle = tg; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.lineTo(m.x - 30, m.y - 130); ctx.stroke();
     const hit = Math.hypot(m.x - g.cx, m.y - g.cy) < g.R * 1.02;
-    if (hit) { S.flash = 1; const a = Math.atan2(m.y - g.cy, m.x - g.cx); craters.push({ x: Math.cos(a) * .8 * rnd(.3, .9), y: Math.sin(a) * .6, r: rnd(.04, .08) }); if (craters.length > 8) craters.shift(); S.green = Math.max(0, S.green - .05); log('[WARN] Удар метеорита! Экосистема повреждена', 'warn'); ach('meteor', 'Звёздный гость'); return false; }
+    if (hit) { S.flash = 1; const a = Math.atan2(m.y - g.cy, m.x - g.cx); crater(-S.rot + rnd(-.7, .7), Math.max(-1.2, Math.min(1.2, Math.sin(a) * 1.0)), 20 + (Math.random() * 14 | 0)); S.green = Math.max(0, S.green - .05); log('[WARN] Удар метеорита! Экосистема повреждена', 'warn'); ach('meteor', 'Звёздный гость'); return false; }
     return m.y < H + 50;
   });
   if (S.flash > .01) { ctx.fillStyle = `rgba(255,200,140,${S.flash * .35})`; ctx.fillRect(0, 0, W, H); S.flash *= .9; }
