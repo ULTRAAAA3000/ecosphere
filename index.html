@@ -9,32 +9,34 @@
 <body>
 <header class="top glass">
   <h1>EcoSphere<span>: Mars &amp; Forest</span></h1>
-  <div class="status"><i></i> Биокупол активен</div>
+  <div class="status"><i></i> <span id="clock">Сол 1</span> · Биокупол активен</div>
 </header>
 <main class="layout">
   <aside class="panel glass">
-    <h2>Панель управления</h2>
-    <label class="ctrl">
-      <span>Генератор атмосферы <em>Кислород / CO₂</em></span>
-      <input type="range" id="atmo" min="0" max="100" value="20">
-      <output id="atmoOut">20%</output>
-    </label>
-    <label class="ctrl">
-      <span>Энерго-сеть <em>Солнце / Корневая система</em></span>
-      <input type="range" id="energy" min="0" max="100" value="30">
-      <output id="energyOut">30%</output>
-    </label>
-    <button id="nano" class="toggle" aria-pressed="false">
-      <span class="dot"></span> Нано-боты терраформирования: <b>ВЫКЛ</b>
-    </button>
-    <div class="stats">
-      <div>Озеленение<b id="sGreen">0%</b></div>
-      <div>Биокупола<b id="sDomes">0</b></div>
-      <div>Наноботы<b id="sBots">0</b></div>
+    <h2>Параметры среды</h2>
+    <div id="sliders"></div>
+    <h2>Системы</h2>
+    <div id="toggles" class="tgl-grid"></div>
+    <h2>События</h2>
+    <div class="btns">
+      <button class="btn" id="bMeteor">☄ Метеорит</button>
+      <button class="btn" id="bStorm">🌪 Пыльная буря</button>
+      <button class="btn" id="bRand">🎲 Случайно</button>
+    </div>
+    <div class="btns">
+      <button class="btn pre" data-p="mars">Марс</button>
+      <button class="btn pre" data-p="terra">Терраформ</button>
+      <button class="btn pre" data-p="eden">Эдем</button>
     </div>
   </aside>
   <section class="stage glass">
     <canvas id="canvas"></canvas>
+    <div class="hud">
+      <div class="idx"><small>ЭКО-ИНДЕКС</small><b id="idx">0</b><span id="rank">Мёртвая пустошь</span><div class="bar"><i id="bar"></i></div></div>
+      <div class="meters" id="meters"></div>
+    </div>
+    <div class="hint">Клик по планете — построить биокупол</div>
+    <div id="toast"></div>
   </section>
 </main>
 <section class="console glass">
