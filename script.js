@@ -32,13 +32,13 @@ for (var i = 0; i < domeAngles.length; i++) {
 }
 
 var randomLogs = [
-  ["ok", "[OK] Корневая система хвойных успешно адаптирована к марсианскому грунту"],
-  ["info", "[INFO] Мониторинг влажности под биокуполом: стабильно"],
-  ["ok", "[OK] Микориза связала перхлоратные слои с корневой сетью"],
-  ["warn", "[WARN] Пылевая буря в секторе 7: солнечные панели на 80%"],
-  ["info", "[INFO] Фотосинтез: уровень O2 растёт"],
-  ["ok", "[OK] Первые мхи закрепились на реголите"],
-  ["info", "[INFO] Спутник связи: задержка 12 мин, канал стабилен"]
+  ["ok", "[OK] Коренева система хвойних успішно адаптована до марсіанського ґрунту"],
+  ["info", "[INFO] Моніторинг вологості під біокуполом: стабільно"],
+  ["ok", "[OK] Мікориза зв'язала перхлоратні шари з кореневою мережею"],
+  ["warn", "[WARN] Пилова буря в секторі 7: сонячні панелі на 80%"],
+  ["info", "[INFO] Фотосинтез: рівень O2 зростає"],
+  ["ok", "[OK] Перші мохи закріпилися на реголіті"],
+  ["info", "[INFO] Супутник зв'язку: затримка 12 хв, канал стабільний"]
 ];
 
 function rand(a, b) {
@@ -75,13 +75,13 @@ function achievement(key, text) {
   if (done[key]) return;
   done[key] = true;
   var toast = document.getElementById("toast");
-  toast.textContent = "Достижение: " + text;
+  toast.textContent = "Досягнення: " + text;
   toast.className = "show";
   clearTimeout(toastTimer);
   toastTimer = setTimeout(function () {
     toast.className = "";
   }, 3000);
-  addLog("[OK] Достижение: " + text, "ok");
+  addLog("[OK] Досягнення: " + text, "ok");
 }
 
 function makeTexture(count, minR, maxR, colors, alpha, background) {
@@ -532,7 +532,7 @@ function spawnMeteor() {
   var dy = targetY + 20;
   var len = Math.sqrt(dx * dx + dy * dy);
   meteors.push({ x: startX, y: -20, vx: dx / len * 10, vy: dy / len * 10, trail: [] });
-  addLog("[WARN] Обнаружен метеорит! Щиты на максимум", "warn");
+  addLog("[WARN] Виявлено метеорит! Щити на максимум", "warn");
 }
 
 function drawMeteors(p) {
@@ -569,8 +569,8 @@ function drawMeteors(p) {
       craters.push({ u: u, v: v, size: rand(0.05, 0.1) });
       if (craters.length > 8) craters.shift();
       green = Math.max(0, green - 0.05);
-      addLog("[WARN] Удар метеорита! Экосистема повреждена", "warn");
-      achievement("meteor", "Звёздный гость");
+      addLog("[WARN] Удар метеорита! Екосистему пошкоджено", "warn");
+      achievement("meteor", "Зоряний гість");
       meteors.splice(i, 1);
     } else if (m.y > H + 50) {
       meteors.splice(i, 1);
@@ -620,18 +620,18 @@ function drawStorm() {
   storm = storm - 0.0012;
   if (storm <= 0) {
     storm = 0;
-    addLog("[OK] Буря утихла, панели очищены", "ok");
+    addLog("[OK] Буря вщухла, панелі очищено", "ok");
   }
 }
 
 var ranks = [
-  [0, "Мёртвая пустошь"],
-  [15, "Реголит и надежды"],
-  [30, "Первые ростки"],
-  [50, "Дыхание Марса"],
-  [70, "Зелёный оазис"],
-  [85, "Новая Земля"],
-  [97, "Эдем"]
+  [0, "Мертва пустка"],
+  [15, "Реголіт і надії"],
+  [30, "Перші паростки"],
+  [50, "Подих Марса"],
+  [70, "Зелений оазис"],
+  [85, "Нова Земля"],
+  [97, "Едем"]
 ];
 
 function updateHud(domeCount) {
@@ -649,10 +649,10 @@ function updateHud(domeCount) {
   document.getElementById("mWater").textContent = params.water + "%";
   document.getElementById("mDomes").textContent = domeCount;
   document.getElementById("clock").textContent = "Сол " + (1 + Math.floor(time / 600));
-  if (index >= 25) achievement("i25", "Первый росток");
-  if (index >= 50) achievement("i50", "Дыхание Марса");
-  if (index >= 75) achievement("i75", "Зелёная планета");
-  if (index >= 95) achievement("i95", "Эдем достигнут!");
+  if (index >= 25) achievement("i25", "Перший росток");
+  if (index >= 50) achievement("i50", "Подих Марса");
+  if (index >= 75) achievement("i75", "Зелена планета");
+  if (index >= 95) achievement("i95", "Едем досягнуто!");
 }
 
 var domeCountShown = 0;
@@ -691,29 +691,29 @@ function loop() {
 function paramMessage(name) {
   var v = params[name];
   if (name == "atmo") {
-    if (v > 60) addLog("[OK] Баланс атмосферы смещён в сторону кислорода", "ok");
-    else if (v < 25) addLog("[WARN] Высокий уровень CO2 под куполом", "warn");
-    else addLog("[INFO] Состав атмосферы скорректирован", "info");
+    if (v > 60) addLog("[OK] Баланс атмосфери зміщено в бік кисню", "ok");
+    else if (v < 25) addLog("[WARN] Високий рівень CO2 під куполом", "warn");
+    else addLog("[INFO] Склад атмосфери скориговано", "info");
   }
   if (name == "energy") {
-    if (v > 60) addLog("[OK] Корневая система получает энергию от солнечных батарей", "ok");
-    else addLog("[INFO] Энергопоток перераспределён", "info");
+    if (v > 60) addLog("[OK] Коренева система отримує енергію від сонячних батарей", "ok");
+    else addLog("[INFO] Енергопотік перерозподілено", "info");
   }
   if (name == "water") {
-    if (v > 60) addLog("[OK] Подлёдные резервуары вскрыты: появляются озёра", "ok");
-    else addLog("[INFO] Расход воды изменён", "info");
+    if (v > 60) addLog("[OK] Підльодові резервуари розкрито: з'являються озера", "ok");
+    else addLog("[INFO] Витрату води змінено", "info");
   }
   if (name == "temp") {
-    if (v > 85) addLog("[WARN] Перегрев теплового щита", "warn");
-    else if (v < 30) addLog("[WARN] Купол промерзает", "warn");
-    else addLog("[OK] Температура в комфортном диапазоне", "ok");
+    if (v > 85) addLog("[WARN] Перегрів теплового щита", "warn");
+    else if (v < 30) addLog("[WARN] Купол промерзає", "warn");
+    else addLog("[OK] Температура в комфортному діапазоні", "ok");
   }
   if (name == "bio") {
-    if (v > 60) addLog("[OK] Новые виды хвойных и цветов прижились", "ok");
-    else addLog("[INFO] Банк семян обновлён", "info");
+    if (v > 60) addLog("[OK] Нові види хвойних і квітів прижилися", "ok");
+    else addLog("[INFO] Банк насіння оновлено", "info");
   }
   if (name == "speed") {
-    addLog("[INFO] Темп времени изменён", "info");
+    addLog("[INFO] Темп часу змінено", "info");
   }
 }
 
@@ -746,24 +746,24 @@ function connectToggle(name) {
     sw[name] = !sw[name];
     button.setAttribute("aria-pressed", sw[name]);
     if (sw[name]) {
-      button.querySelector("b").textContent = "ВКЛ";
+      button.querySelector("b").textContent = "УВІМК";
     } else {
-      button.querySelector("b").textContent = "ВЫКЛ";
+      button.querySelector("b").textContent = "ВИМК";
     }
     if (name == "nano") {
-      if (sw.nano) addLog("[OK] Нано-боты запущены: очистка грунта от перхлоратов", "ok");
-      else addLog("[WARN] Нано-боты остановлены", "warn");
+      if (sw.nano) addLog("[OK] Нано-боти запущено: очищення ґрунту від перхлоратів", "ok");
+      else addLog("[WARN] Нано-боти зупинено", "warn");
     }
     if (name == "magnet") {
-      if (sw.magnet) addLog("[OK] Магнитосфера активна: над полюсом сияет аврора", "ok");
-      else addLog("[WARN] Магнитное поле отключено", "warn");
+      if (sw.magnet) addLog("[OK] Магнітосфера активна: над полюсом сяє аврора", "ok");
+      else addLog("[WARN] Магнітне поле вимкнено", "warn");
     }
     if (name == "rain") {
-      if (sw.rain) addLog("[OK] Дождевание запущено", "ok");
-      else addLog("[INFO] Дождевание остановлено", "info");
+      if (sw.rain) addLog("[OK] Зрошення запущено", "ok");
+      else addLog("[INFO] Зрошення зупинено", "info");
     }
     if (name == "auto") {
-      addLog("[INFO] Смена дня и ночи переключена", "info");
+      addLog("[INFO] Зміну дня і ночі перемкнуто", "info");
     }
   };
 }
@@ -779,8 +779,8 @@ document.getElementById("bMeteor").onclick = spawnMeteor;
 
 document.getElementById("bStorm").onclick = function () {
   storm = 1;
-  addLog("[WARN] Приближается пылевая буря!", "warn");
-  achievement("storm", "Пережил бурю");
+  addLog("[WARN] Наближається пилова буря!", "warn");
+  achievement("storm", "Пережив бурю");
 };
 
 document.getElementById("bRand").onclick = function () {
@@ -791,22 +791,22 @@ document.getElementById("bRand").onclick = function () {
     temp: Math.floor(rand(20, 80)),
     bio: Math.floor(rand(0, 100))
   });
-  addLog("[INFO] Параметры сгенерированы случайно", "info");
+  addLog("[INFO] Параметри згенеровано випадково", "info");
 };
 
 document.getElementById("pMars").onclick = function () {
   setParams({ atmo: 5, energy: 15, water: 5, temp: 20, bio: 0 });
-  addLog("[INFO] Загружен сценарий Марс", "info");
+  addLog("[INFO] Завантажено сценарій Марс", "info");
 };
 
 document.getElementById("pTerra").onclick = function () {
   setParams({ atmo: 50, energy: 55, water: 45, temp: 55, bio: 35 });
-  addLog("[INFO] Загружен сценарий Терраформ", "info");
+  addLog("[INFO] Завантажено сценарій Терраформ", "info");
 };
 
 document.getElementById("pEden").onclick = function () {
   setParams({ atmo: 90, energy: 85, water: 80, temp: 65, bio: 90 });
-  addLog("[INFO] Загружен сценарий Эдем", "info");
+  addLog("[INFO] Завантажено сценарій Едем", "info");
 };
 
 canvas.onclick = function (e) {
@@ -816,20 +816,20 @@ canvas.onclick = function (e) {
   var dy = e.clientY - box.top - p.y;
   if (Math.sqrt(dx * dx + dy * dy) > p.r * 1.25) return;
   if (domes.length >= 14) {
-    addLog("[WARN] Достигнут лимит куполов", "warn");
+    addLog("[WARN] Досягнуто ліміту куполів", "warn");
     return;
   }
   var angle = clamp(Math.atan2(dy, dx) + Math.PI / 2, -1.45, 1.45);
   domes.push({ angle: angle, grow: 0, auto: false, number: domes.length });
-  addLog("[OK] Построен новый биокупол вручную", "ok");
-  achievement("build", "Первый строитель");
+  addLog("[OK] Збудовано новий біокупол вручну", "ok");
+  achievement("build", "Перший будівельник");
 };
 
 window.onresize = resize;
 
 resize();
-addLog("[INFO] Инициализация EcoSphere: Mars & Forest...", "info");
-addLog("[OK] Соединение с биокуполом установлено", "ok");
+addLog("[INFO] Ініціалізація EcoSphere: Mars & Forest...", "info");
+addLog("[OK] З'єднання з біокуполом встановлено", "ok");
 
 setInterval(function () {
   var item = randomLogs[Math.floor(Math.random() * randomLogs.length)];
