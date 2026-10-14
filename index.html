@@ -3,46 +3,97 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>EcoSphere: Mars &amp; Forest</title>
+<title>EcoSphere: Mars & Forest</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <header class="top glass">
-  <h1>EcoSphere<span>: Mars &amp; Forest</span></h1>
+  <h1>EcoSphere<span>: Mars & Forest</span></h1>
   <div class="status"><i></i> <span id="clock">Сол 1</span> · Биокупол активен</div>
 </header>
+
 <main class="layout">
   <aside class="panel glass">
     <h2>Параметры среды</h2>
-    <div id="sliders"></div>
+
+    <label class="ctrl">
+      <div class="row"><span>Генератор атмосферы</span><output id="atmoOut">20%</output></div>
+      <em>Кислород / CO2</em>
+      <input type="range" id="atmo" min="0" max="100" value="20">
+    </label>
+    <label class="ctrl">
+      <div class="row"><span>Энерго-сеть</span><output id="energyOut">30%</output></div>
+      <em>Солнце / Корневая система</em>
+      <input type="range" id="energy" min="0" max="100" value="30">
+    </label>
+    <label class="ctrl">
+      <div class="row"><span>Водный цикл</span><output id="waterOut">10%</output></div>
+      <em>Подлёдные резервуары</em>
+      <input type="range" id="water" min="0" max="100" value="10">
+    </label>
+    <label class="ctrl">
+      <div class="row"><span>Термостат</span><output id="tempOut">25%</output></div>
+      <em>Тепловой щит купола</em>
+      <input type="range" id="temp" min="0" max="100" value="25">
+    </label>
+    <label class="ctrl">
+      <div class="row"><span>Биоразнообразие</span><output id="bioOut">5%</output></div>
+      <em>Хвойные, мхи, цветы</em>
+      <input type="range" id="bio" min="0" max="100" value="5">
+    </label>
+    <label class="ctrl">
+      <div class="row"><span>Скорость времени</span><output id="speedOut">40%</output></div>
+      <em>День / ночь</em>
+      <input type="range" id="speed" min="0" max="100" value="40">
+    </label>
+
     <h2>Системы</h2>
-    <div id="toggles" class="tgl-grid"></div>
+    <div class="tgl-grid">
+      <button class="toggle" id="nano" aria-pressed="false"><span class="dot"></span>Нано-боты <b>ВЫКЛ</b></button>
+      <button class="toggle" id="magnet" aria-pressed="false"><span class="dot"></span>Магнитное поле <b>ВЫКЛ</b></button>
+      <button class="toggle" id="rain" aria-pressed="false"><span class="dot"></span>Дождевание <b>ВЫКЛ</b></button>
+      <button class="toggle" id="auto" aria-pressed="true"><span class="dot"></span>Смена дня <b>ВКЛ</b></button>
+    </div>
+
     <h2>События</h2>
     <div class="btns">
-      <button class="btn" id="bMeteor">☄ Метеорит</button>
-      <button class="btn" id="bStorm">🌪 Пыльная буря</button>
-      <button class="btn" id="bRand">🎲 Случайно</button>
+      <button class="btn" id="bMeteor">Метеорит</button>
+      <button class="btn" id="bStorm">Пыльная буря</button>
+      <button class="btn" id="bRand">Случайно</button>
     </div>
     <div class="btns">
-      <button class="btn pre" data-p="mars">Марс</button>
-      <button class="btn pre" data-p="terra">Терраформ</button>
-      <button class="btn pre" data-p="eden">Эдем</button>
+      <button class="btn pre" id="pMars">Марс</button>
+      <button class="btn pre" id="pTerra">Терраформ</button>
+      <button class="btn pre" id="pEden">Эдем</button>
     </div>
   </aside>
+
   <section class="stage glass">
     <canvas id="canvas"></canvas>
     <div class="hud">
-      <div class="idx"><small>ЭКО-ИНДЕКС</small><b id="idx">0</b><span id="rank">Мёртвая пустошь</span><div class="bar"><i id="bar"></i></div></div>
-      <div class="meters" id="meters"></div>
+      <div class="idx">
+        <small>ЭКО-ИНДЕКС</small>
+        <b id="idx">0</b>
+        <span id="rank">Мёртвая пустошь</span>
+        <div class="bar"><i id="bar"></i></div>
+      </div>
+      <div class="meters">
+        <div>Температура<b id="mTemp">-40 °C</b></div>
+        <div>O2<b id="mO2">4%</b></div>
+        <div>Влажность<b id="mWater">10%</b></div>
+        <div>Куполов<b id="mDomes">0</b></div>
+      </div>
     </div>
-    <div class="hint">Клик по планете — построить биокупол</div>
+    <div class="hint">Клик по планете - построить биокупол</div>
     <div id="toast"></div>
   </section>
 </main>
+
 <section class="console glass">
   <h2>AI-Console</h2>
-  <div id="log" role="log" aria-live="polite"></div>
+  <div id="log"></div>
 </section>
+
 <script src="script.js"></script>
 </body>
 </html>
