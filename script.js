@@ -1,342 +1,1094 @@
-'use strict';
-const $ = id => document.getElementById(id);
-const cv = $('canvas'), ctx = cv.getContext('2d');
-const lerp = (a, b, k) => a + (b - a) * k, rnd = (a, b) => a + Math.random() * (b - a);
-const mix = (c1, c2, k) => c1.map((v, i) => Math.round(lerp(v, c2[i], k)));
-const RED = [176, 78, 46], GREEN = [26, 160, 98], DR = [90, 32, 22], DG = [6, 70, 46];
-const TAU = Math.PI * 2;
+var canvas = document.getElementById("canvas");
+var ctx = canvas.getContext("2d");
+var W = 0;
+var H = 0;
+var PI2 = Math.PI * 2;
 
-/* ---------- состояние ---------- */
-const P = { atmo: 20, energy: 30, water: 10, temp: 25, bio: 5, speed: 40 };
-const T = { nano: false, magnet: false, rain: false, auto: true };
-const S = { green: 0, t: 0, rot: 0, storm: 0, flash: 0, sol: 1, shown: {} };
-let W = 0, H = 0, stars = [], bots = [], meteors = [], craters = [], clouds = [], drops = [], dust = [], blobs = [], domes = [];
+var params = { atmo: 20, energy: 30, water: 10, temp: 25, bio: 5, speed: 40 };
+var paramNames = ["atmo", "energy", "water", "temp", "bio", "speed"];
+var sw = { nano: false, magnet: false, rain: false, auto: true };
+var swNames = ["nano", "magnet", "rain", "auto"];
 
-const SLIDERS = [
-  ['atmo', 'Генератор атмосферы', 'Кислород / CO₂', '%'],
-  ['energy', 'Энерго-сеть', 'Солнце / Корневая система', '%'],
-  ['water', 'Водный цикл', 'Подлёдные резервуары', '%'],
-  ['temp', 'Термостат', 'Тепловой щит купола', '%'],
-  ['bio', 'Биоразнообразие', 'Хвойные · мхи · цветы', '%'],
-  ['speed', 'Скорость времени', 'День / ночь', '%']
+var time = 0;
+var green = 0;
+var rotation = 0;
+var storm = 0;
+var flash = 0;
+var done = {};
+var toastTimer = 0;
+
+var stars = [];
+var bots = [];
+var meteors = [];
+var sparks = [];
+var craters = [];
+var domes = [];
+var drops = [];
+var dust = [];
+
+var domeAngles = [-0.5, 0.22, -0.12, 0.62, -0.82, 0.9, 0.4, -0.32];
+for (var i = 0; i < domeAngles.length; i++) {
+  domes.push({ angle: domeAngles[i], grow: 0, auto: true, number: i });
+}
+
+var randomLogs = [
+  ["ok", "[OK] Коренева система хвойних успішно адаптована до марсіанського ґрунту"],
+  ["info", "[INFO] Моніторинг вологості під біокуполом: стабільно"],
+  ["ok", "[OK] Мікориза зв'язала перхлоратні шари з кореневою мережею"],
+  ["warn", "[WARN] Пилова буря в секторі 7: сонячні панелі на 80%"],
+  ["info", "[INFO] Фотосинтез: рівень O2 зростає"],
+  ["ok", "[OK] Перші мохи закріпилися на реголіті"],
+  ["info", "[INFO] Супутник зв'язку: затримка 12 хв, канал стабільний"]
 ];
-const TOGGLES = [['nano', '🤖 Нано-боты'], ['magnet', '🧲 Магнитное поле'], ['rain', '🌧 Дождевание'], ['auto', '🌗 Смена дня']];
 
-/* ---------- лог / тост ---------- */
-const logEl = $('log');
-function log(msg, type = 'info') {
-  const p = document.createElement('p');
+function rand(a, b) {
+  return a + Math.random() * (b - a);
+}
+
+function clamp(v, a, b) {
+  if (v < a) return a;
+  if (v > b) return b;
+  return v;
+}
+
+function mix(a, b, k) {
+  return a + (b - a) * k;
+}
+
+function rgba(r, g, b, a) {
+  return "rgba(" + Math.round(r) + "," + Math.round(g) + "," + Math.round(b) + "," + a + ")";
+}
+
+function addLog(text, type) {
+  var log = document.getElementById("log");
+  var p = document.createElement("p");
   p.className = type;
-  p.textContent = `[${new Date().toLocaleTimeString('ru-RU')}] ${msg}`;
-  logEl.appendChild(p);
-  while (logEl.children.length > 60) logEl.firstChild.remove();
-  logEl.scrollTop = logEl.scrollHeight;
-}
-let toastTm;
-function toast(msg) {
-  const el = $('toast'); el.textContent = '🏆 ' + msg; el.classList.add('show');
-  clearTimeout(toastTm); toastTm = setTimeout(() => el.classList.remove('show'), 3200);
-}
-function ach(key, msg) { if (!S.shown[key]) { S.shown[key] = 1; toast(msg); log('[OK] Достижение: ' + msg, 'ok'); } }
-
-/* ---------- UI ---------- */
-const outs = {}, ranges = {}, tbtn = {};
-SLIDERS.forEach(([k, name, sub]) => {
-  const l = document.createElement('label'); l.className = 'ctrl';
-  l.innerHTML = `<div class="row"><span>${name}</span><output>${P[k]}%</output></div><em>${sub}</em><input type="range" min="0" max="100" value="${P[k]}">`;
-  $('sliders').appendChild(l);
-  outs[k] = l.querySelector('output'); ranges[k] = l.querySelector('input');
-  ranges[k].addEventListener('input', () => { P[k] = +ranges[k].value; outs[k].textContent = P[k] + '%'; });
-  ranges[k].addEventListener('change', () => onParam(k));
-});
-TOGGLES.forEach(([k, name]) => {
-  const b = document.createElement('button'); b.className = 'toggle';
-  b.innerHTML = `<span class="dot"></span>${name} <b></b>`;
-  $('toggles').appendChild(b); tbtn[k] = b;
-  b.addEventListener('click', () => { T[k] = !T[k]; syncToggles(); onToggle(k); });
-});
-function syncToggles() {
-  for (const k in T) { tbtn[k].setAttribute('aria-pressed', T[k]); tbtn[k].querySelector('b').textContent = T[k] ? 'ВКЛ' : 'ВЫКЛ'; }
-  const n = T.nano ? 80 : 0;
-  while (bots.length < n) bots.push({ a: rnd(0, TAU), d: rnd(1.03, 1.55), s: rnd(.002, .009) * (Math.random() < .5 ? -1 : 1), z: rnd(1, 2.5) });
-  bots.length = Math.min(bots.length, n);
-}
-function setP(o) { Object.assign(P, o); SLIDERS.forEach(([k]) => { ranges[k].value = P[k]; outs[k].textContent = P[k] + '%'; }); }
-function onParam(k) {
-  const m = {
-    atmo: P.atmo > 60 ? ['ok', 'Баланс атмосферы смещён в сторону кислорода'] : P.atmo < 25 ? ['warn', 'Высокий уровень CO₂ под куполом'] : ['info', 'Состав атмосферы скорректирован'],
-    energy: P.energy > 60 ? ['ok', 'Корневая система получает энергию от солнечных батарей'] : ['info', 'Энергопоток перераспределён'],
-    water: P.water > 60 ? ['ok', 'Подлёдные резервуары вскрыты — появляются озёра'] : ['info', 'Расход воды изменён'],
-    temp: P.temp > 85 ? ['warn', 'Перегрев теплового щита'] : P.temp < 30 ? ['warn', 'Купол промерзает'] : ['ok', 'Температура в комфортном диапазоне'],
-    bio: P.bio > 60 ? ['ok', 'Новые виды хвойных и цветов прижились'] : ['info', 'Банк семян обновлён'],
-    speed: ['info', 'Темп времени изменён']
-  }[k];
-  log(`[${m[0].toUpperCase()}] ${m[1]}`, m[0]);
-}
-function onToggle(k) {
-  const msg = {
-    nano: T.nano ? ['ok', 'Нано-боты запущены: очистка грунта от перхлоратов'] : ['warn', 'Нано-боты остановлены'],
-    magnet: T.magnet ? ['ok', 'Магнитосфера активна — над полюсом сияет аврора'] : ['warn', 'Магнитное поле отключено'],
-    rain: T.rain ? ['ok', 'Дождевание запущено'] : ['info', 'Дождевание остановлено'],
-    auto: T.auto ? ['info', 'Автоматическая смена дня и ночи'] : ['info', 'Время зафиксировано']
-  }[k];
-  log(`[${msg[0].toUpperCase()}] ${msg[1]}`, msg[0]);
-}
-const PRESETS = {
-  mars: { atmo: 5, energy: 15, water: 5, temp: 20, bio: 0 },
-  terra: { atmo: 50, energy: 55, water: 45, temp: 55, bio: 35 },
-  eden: { atmo: 90, energy: 85, water: 80, temp: 65, bio: 90 }
-};
-document.querySelectorAll('.pre').forEach(b => b.addEventListener('click', () => { setP(PRESETS[b.dataset.p]); log(`[INFO] Загружен сценарий «${b.textContent}»`); }));
-$('bRand').addEventListener('click', () => { setP({ atmo: rnd(0, 100) | 0, energy: rnd(0, 100) | 0, water: rnd(0, 100) | 0, temp: rnd(20, 80) | 0, bio: rnd(0, 100) | 0 }); log('[INFO] Параметры сгенерированы случайно'); });
-$('bMeteor').addEventListener('click', () => spawnMeteor());
-$('bStorm').addEventListener('click', () => { S.storm = 1; log('[WARN] Приближается пылевая буря!', 'warn'); ach('storm', 'Пережил бурю'); });
-
-/* ---------- геометрия ---------- */
-const geom = () => { const R = Math.min(W, H) * .4; return { cx: W / 2, cy: H * .58, R }; };
-function resize() {
-  const r = cv.getBoundingClientRect(), d = window.devicePixelRatio || 1;
-  W = r.width; H = r.height; cv.width = W * d; cv.height = H * d; ctx.setTransform(d, 0, 0, d, 0, 0);
-  stars = Array.from({ length: 200 }, () => ({ x: Math.random() * W, y: Math.random() * H, r: rnd(.3, 1.5), p: rnd(0, 6), z: rnd(.2, 1) }));
-}
-window.addEventListener('resize', resize);
-blobs = Array.from({ length: 90 }, (_, i) => ({ lon: rnd(0, TAU), lat: rnd(-1.3, 1.3), r: rnd(.05, .17), lake: i % 4 === 0 }));
-clouds = Array.from({ length: 9 }, () => ({ lon: rnd(0, TAU), lat: rnd(-1, 1), w: rnd(.18, .4) }));
-const SEEDS = [-.5, .22, -.12, .62, -.82, .9, .4, -.32].map((a, i) => ({ a, g: 0, auto: true, i }));
-domes = SEEDS.slice();
-
-/* ---------- события ---------- */
-function spawnMeteor() {
-  const g = geom(); const a = rnd(-2.6, -.5);
-  meteors.push({ x: g.cx + Math.cos(a) * W * .6 + rnd(-40, 40), y: -20, a, life: 0 });
-  log('[WARN] Обнаружен метеорит! Щиты на максимум', 'warn');
-}
-cv.addEventListener('click', e => {
-  const r = cv.getBoundingClientRect(), g = geom(), dx = e.clientX - r.left - g.cx, dy = e.clientY - r.top - g.cy;
-  if (Math.hypot(dx, dy) > g.R * 1.25) return;
-  const a = Math.atan2(dy, dx);
-  const rel = a + Math.PI / 2;
-  if (domes.length < 14) { domes.push({ a: Math.max(-1.45, Math.min(1.45, rel)), g: 0, auto: false }); log('[OK] Построен новый биокупол вручную', 'ok'); ach('build', 'Первый строитель'); }
-  else log('[WARN] Достигнут лимит куполов', 'warn');
-});
-
-/* ---------- метрики ---------- */
-function targetGreen() {
-  const tSuit = 1 - Math.abs(P.temp - 62) / 62;
-  let k = .3 * P.atmo + .2 * P.energy + .2 * P.water + .15 * tSuit * 100 + .15 * P.bio;
-  k = k / 100 + (T.nano ? .06 : 0) + (T.magnet ? .05 : 0) - S.storm * .12;
-  return Math.max(0, Math.min(1, k));
-}
-const RANKS = [[0, 'Мёртвая пустошь'], [15, 'Реголит и надежды'], [30, 'Первые ростки'], [50, 'Дыхание Марса'], [70, 'Зелёный оазис'], [85, 'Новая Земля'], [97, 'Эдем']];
-
-/* ---------- отрисовка ---------- */
-function bg(amb) {
-  const g = ctx.createRadialGradient(W * .3, H * .2, 0, W * .3, H * .2, W * .8);
-  g.addColorStop(0, `rgba(120,40,110,${.25 * amb})`); g.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-  const g2 = ctx.createRadialGradient(W * .85, H * .75, 0, W * .85, H * .75, W * .6);
-  g2.addColorStop(0, `rgba(16,120,100,${.22 * amb})`); g2.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = g2; ctx.fillRect(0, 0, W, H);
-  stars.forEach(s => {
-    ctx.globalAlpha = (.3 + .7 * Math.abs(Math.sin(S.t * .02 * s.z + s.p))) * (1 - .6 * S.green * amb);
-    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc((s.x + S.t * .05 * s.z) % W, s.y, s.r, 0, TAU); ctx.fill();
-  });
-  ctx.globalAlpha = 1;
-}
-/* ---------- процедурная планета (карты шума + пиксельный рендер сферы) ---------- */
-const MW = 1024, MH = 512;
-function fbm(seed, oct) {
-  let s = seed; const rn = () => (s = (s * 16807) % 2147483647) / 2147483647;
-  const out = new Float32Array(MW * MH); let amp = 1, tot = 0;
-  for (let o = 0; o < oct; o++) {
-    const gx = 4 << o, gy = 2 << o, lat = Array.from({ length: gx * (gy + 1) }, rn);
-    for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
-      const fx = x / MW * gx, fy = y / MH * gy, x0 = fx | 0, y0 = fy | 0, tx = fx - x0, ty = fy - y0;
-      const sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty), x1 = (x0 + 1) % gx;
-      const a = lat[y0 * gx + x0], b = lat[y0 * gx + x1], c = lat[(y0 + 1) * gx + x0], d = lat[(y0 + 1) * gx + x1];
-      out[y * MW + x] += amp * lerp(lerp(a, b, sx), lerp(c, d, sx), sy);
-    }
-    tot += amp; amp *= .52;
+  p.textContent = "[" + new Date().toLocaleTimeString("ru-RU") + "] " + text;
+  log.appendChild(p);
+  while (log.children.length > 50) {
+    log.removeChild(log.firstChild);
   }
-  let mn = 9, mx = -9; for (let i = 0; i < out.length; i++) { out[i] /= tot; mn = Math.min(mn, out[i]); mx = Math.max(mx, out[i]); }
-  for (let i = 0; i < out.length; i++) out[i] = (out[i] - mn) / (mx - mn);
+  log.scrollTop = log.scrollHeight;
+}
+
+function achievement(key, text) {
+  if (done[key]) return;
+  done[key] = true;
+  var toast = document.getElementById("toast");
+  toast.textContent = "Досягнення: " + text;
+  toast.className = "show";
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () {
+    toast.className = "";
+  }, 3000);
+  addLog("[OK] Досягнення: " + text, "ok");
+}
+
+var TEX_W = 512;
+var TEX_H = 256;
+var noiseSizes = [8, 16, 32, 64, 128];
+var noiseAlpha = [1, 0.35, 0.2, 0.12, 0.07];
+
+function makeNoise() {
+  var out = document.createElement("canvas");
+  out.width = TEX_W;
+  out.height = TEX_H;
+  var t = out.getContext("2d");
+  t.fillStyle = "#808080";
+  t.fillRect(0, 0, TEX_W, TEX_H);
+  for (var i = 0; i < noiseSizes.length; i++) {
+    var n = noiseSizes[i];
+    var rows = n / 2;
+    var small = document.createElement("canvas");
+    small.width = n + 1;
+    small.height = rows + 1;
+    var sc = small.getContext("2d");
+    var firstColumn = [];
+    for (var x = 0; x <= n; x++) {
+      for (var y = 0; y <= rows; y++) {
+        var v = Math.random();
+        if (x == 0) firstColumn[y] = v;
+        if (x == n) v = firstColumn[y];
+        var gray = Math.floor(v * 255);
+        sc.fillStyle = "rgb(" + gray + "," + gray + "," + gray + ")";
+        sc.fillRect(x, y, 1, 1);
+      }
+    }
+    var scaleX = TEX_W / n;
+    var scaleY = TEX_H / rows;
+    t.globalAlpha = noiseAlpha[i];
+    t.drawImage(small, -scaleX / 2, -scaleY / 2, (n + 1) * scaleX, (rows + 1) * scaleY);
+  }
+  t.globalAlpha = 1;
   return out;
 }
-const HM = fbm(7, 6), VM = fbm(31, 5), CM = fbm(99, 5);
-const NN = 320, pc = document.createElement('canvas'); pc.width = pc.height = NN;
-const pctx = pc.getContext('2d'), img = pctx.createImageData(NN, NN), D = img.data;
-const cl = (v, a = 0, b = 1) => v < a ? a : v > b ? b : v;
-const sm = (a, b, v) => { const t = cl((v - a) / (b - a)); return t * t * (3 - 2 * t); };
-function crater(lon, lat, r) {
-  const cx = ((lon / TAU % 1 + 1) % 1) * MW, cy = (lat / Math.PI + .5) * MH;
-  for (let dy = -r; dy <= r; dy++) for (let dx = -r * 2; dx <= r * 2; dx++) {
-    const d = Math.hypot(dx / 2, dy) / r; if (d > 1.25) continue;
-    const x = ((cx + dx) % MW + MW) % MW | 0, y = cl(cy + dy | 0, 0, MH - 1), i = y * MW + x;
-    HM[i] = cl(HM[i] - (d < 1 ? .22 * (1 - d * d) : 0) + (d > .85 && d < 1.2 ? .06 : 0));
+
+function readHeights(canvas) {
+  var data = canvas.getContext("2d").getImageData(0, 0, TEX_W, TEX_H).data;
+  var list = [];
+  var min = 255;
+  var max = 0;
+  for (var i = 0; i < TEX_W * TEX_H; i++) {
+    var v = data[i * 4];
+    list.push(v);
+    if (v < min) min = v;
+    if (v > max) max = v;
   }
+  for (var j = 0; j < list.length; j++) {
+    list[j] = (list[j] - min) / (max - min);
+  }
+  return list;
 }
-const NP = NN * NN, tNX = new Float32Array(NP), tNY = new Float32Array(NP), tNZ = new Float32Array(NP), tLON = new Float32Array(NP), tV = new Int16Array(NP), tA = new Float32Array(NP), tLAT = new Float32Array(NP);
-(() => { const h = NN / 2; for (let py = 0; py < NN; py++) for (let px = 0; px < NN; px++) { const i = py * NN + px, nx = (px - h) / h, ny = (py - h) / h, r2 = nx * nx + ny * ny; if (r2 >= 1) { tA[i] = -1; continue; } const nz = Math.sqrt(1 - r2), lat = Math.asin(ny); tNX[i] = nx; tNY[i] = ny; tNZ[i] = nz; tLAT[i] = lat; tLON[i] = Math.atan2(nx, nz); tV[i] = Math.min(MH - 2, (lat / Math.PI + .5) * MH | 0); tA[i] = cl((1 - Math.sqrt(r2)) * NN * .45, 0, 1); } })();
-function renderPlanet(k, sunA) {
-  const sl = P.water / 100 * .66, capLat = 1.45 - P.temp / 100 * .75;
-  const L = [Math.cos(sunA) * .85, -.38, .5 + .25 * Math.sin(sunA * .7)], ln = Math.hypot(...L); L.forEach((v, i) => L[i] = v / ln);
-  const hv = [L[0], L[1], L[2] + 1], hn = Math.hypot(...hv); hv.forEach((v, i) => hv[i] = v / hn);
-  const ac = mix([255, 140, 80], [110, 190, 255], Math.max(P.atmo / 100, k)), N2 = NN / 2;
-  const rotU = S.rot / TAU * MW, drift = S.t * .16 | 0;
-  for (let p = 0; p < NP; p++) {
-    const o = p * 4;
-    if (tA[p] < 0) { D[o + 3] = 0; continue; }
-    const nx = tNX[p], ny = tNY[p], nz = tNZ[p], lat = tLAT[p], v = tV[p];
-    const u = ((((tLON[p] / TAU) * MW + rotU) % MW) + MW) % MW | 0, i = v * MW + u, i2 = v * MW + (u + 1) % MW;
-    const h = HM[i], vg = VM[i];
-    const dot = nx * L[0] + ny * L[1] + nz * L[2];
-    let lit = sm(-.12, .35, dot), col, spec = 0, em = 0;
-    if (h < sl) {
-      const dp = cl((sl - h) / Math.max(sl, .01)); col = mix([70, 190, 215], [8, 38, 105], Math.pow(dp, .6));
-      spec = Math.pow(cl(nx * hv[0] + ny * hv[1] + nz * hv[2]), 60) * .9 * lit;
-    } else {
-      const hh = (h - sl) / (1 - sl);
-      col = mix(mix([84, 34, 24], [196, 108, 62], hh), [226, 168, 112], sm(.7, 1, hh) * (1 - k * .6));
-      const veg = cl((k * 1.35 - vg * .75 - hh * .45) * 3.2);
-      if (veg > 0) { col = mix(col, mix([8, 62, 40], [96, 190, 84], cl(vg * 2.2 - hh * .5 - .25)), veg); em = veg * (1 - lit) * (VM[i2] > .55 ? 1 : 0); }
-      lit = cl(lit + (HM[i] - HM[i2]) * 22 * L[0] + (HM[i] - HM[i + MW]) * 22 * L[1]);
-      if (hh < .03) col = mix(col, [240, 230, 200], .5 * (1 - hh / .03));
+
+function buildTexture(colorFunction) {
+  var c = document.createElement("canvas");
+  c.width = TEX_W;
+  c.height = TEX_H;
+  var t = c.getContext("2d");
+  var img = t.createImageData(TEX_W, TEX_H);
+  for (var y = 0; y < TEX_H; y++) {
+    for (var x = 0; x < TEX_W; x++) {
+      var i = y * TEX_W + x;
+      var color = colorFunction(i, x, y);
+      img.data[i * 4] = color[0];
+      img.data[i * 4 + 1] = color[1];
+      img.data[i * 4 + 2] = color[2];
+      img.data[i * 4 + 3] = color[3];
     }
-    const polar = Math.abs(lat) + (CM[i] - .5) * .35 - capLat;
-    if (polar > 0) { col = mix(col, [236, 244, 252], sm(0, .1, polar)); spec = 0; }
-    const cd = cl((CM[v * MW + (u + drift) % MW] - .8 + P.water / 100 * .22) * 5) * .8;
-    col = mix(col, [255, 255, 255], cd * (.6 + .4 * lit));
-    const rim = Math.pow(1 - nz, 2.6) * (.35 + .65 * P.atmo / 100) * (.25 + .75 * cl(lit + .3));
-    const amb = .05 + .95 * lit;
-    D[o] = cl(col[0] * amb + ac[0] * rim * .9 + spec * 255 + em * 20, 0, 255);
-    D[o + 1] = cl(col[1] * amb + ac[1] * rim * .9 + spec * 255 + em * 190, 0, 255);
-    D[o + 2] = cl(col[2] * amb + ac[2] * rim * .9 + spec * 255 + em * 120, 0, 255);
-    D[o + 3] = tA[p] * 255;
   }
-  pctx.putImageData(img, 0, 0);
+  t.putImageData(img, 0, 0);
+  return c;
 }
-function planet(g, k, sunA) {
-  const ac = mix([255, 140, 80], [90, 210, 255], Math.max(P.atmo / 100, k));
-  const halo = ctx.createRadialGradient(g.cx, g.cy, g.R * .96, g.cx, g.cy, g.R * 1.5);
-  halo.addColorStop(0, `rgba(${ac},${.35 + .35 * P.atmo / 100})`); halo.addColorStop(.35, `rgba(${ac},.1)`); halo.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(g.cx, g.cy, g.R * 1.5, 0, TAU); ctx.fill();
-  if (!planet.f || ((S.t | 0) & 1)) renderPlanet(k, sunA); planet.f = 1;
-  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(pc, g.cx - g.R, g.cy - g.R, g.R * 2, g.R * 2);
-  if (T.rain) {
-    ctx.save(); ctx.beginPath(); ctx.arc(g.cx, g.cy, g.R, 0, TAU); ctx.clip();
-    ctx.strokeStyle = 'rgba(150,210,255,.5)'; ctx.lineWidth = 1; ctx.beginPath();
-    for (let i = 0; i < 60; i++) { const d = drops[i] || (drops[i] = { x: rnd(-1, 1), y: rnd(-1, 1) }); d.y += .035; if (d.y > 1) { d.y = -1; d.x = rnd(-1, 1); } const x = g.cx + d.x * g.R, y = g.cy + d.y * g.R; ctx.moveTo(x, y); ctx.lineTo(x - 2, y + 11); }
-    ctx.stroke(); ctx.restore();
+
+var heights = readHeights(makeNoise());
+var plants = readHeights(makeNoise());
+var cloudsMap = readHeights(makeNoise());
+
+var landTexture = buildTexture(function (i, x, y) {
+  var h = heights[i];
+  var left = heights[y * TEX_W + (x + TEX_W - 9) % TEX_W];
+  var light = 1 + (h - left) * 1.6;
+  var r = 0;
+  var g = 0;
+  var b = 0;
+  if (h < 0.5) {
+    r = mix(95, 176, h * 2);
+    g = mix(40, 86, h * 2);
+    b = mix(26, 50, h * 2);
+  } else {
+    r = mix(176, 218, (h - 0.5) * 2);
+    g = mix(86, 150, (h - 0.5) * 2);
+    b = mix(50, 100, (h - 0.5) * 2);
   }
-}
-function tree(x, y, h, k, c) {
-  ctx.fillStyle = c;
-  for (let i = 0; i < 3; i++) { const w = h * (.42 - i * .1), yy = y - h * (.28 + i * .24); ctx.beginPath(); ctx.moveTo(x, yy - h * .34); ctx.lineTo(x - w, yy); ctx.lineTo(x + w, yy); ctx.fill(); }
-}
-function drawDomes(g, k, night) {
-  const n = Math.min(8, Math.round(P.energy / 100 * 7) + (P.atmo > 10 ? 1 : 0));
-  const act = [];
-  domes.forEach(d => {
-    const on = !d.auto || d.i < n; d.g = lerp(d.g, on ? 1 : 0, .06);
-    if (d.g > .02) {
-      const ang = -Math.PI / 2 + d.a;
-      act.push({ x: g.cx + Math.cos(ang) * g.R * .985, y: g.cy + Math.sin(ang) * g.R * .985, ang, s: g.R * (.1 + .1 * (.3 + P.atmo / 140)) * d.g * (.9 + (d.i || 3) % 3 * .12) });
-    }
-  });
-  act.sort((a, b) => a.x - b.x);
-  ctx.lineWidth = 1.6;
-  for (let i = 0; i < act.length - 1; i++) {
-    const a = act[i], b = act[i + 1], pu = .5 + .5 * Math.sin(S.t * .06 * (1 + P.energy / 40) + i);
-    ctx.strokeStyle = `rgba(80,255,200,${(.25 + .6 * pu) * (.3 + P.energy / 100)})`; ctx.shadowColor = '#10b981'; ctx.shadowBlur = 12;
-    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.quadraticCurveTo((a.x + b.x) / 2 * .98 + g.cx * .02, (a.y + b.y) / 2 + g.R * .08, b.x, b.y); ctx.stroke();
-    const f = (S.t * .01 * (1 + P.energy / 50) + i * .3) % 1; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(lerp(a.x, b.x, f), lerp(a.y, b.y, f) + Math.sin(f * Math.PI) * g.R * .04, 2, 0, TAU); ctx.fill();
-  }
-  ctx.shadowBlur = 0;
-  act.forEach((p, j) => {
-    ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.ang + Math.PI / 2); const s = p.s;
-    const gl = ctx.createRadialGradient(0, 0, 0, 0, 0, s * 1.6); gl.addColorStop(0, `rgba(255,220,140,${.25 * night + .1})`); gl.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(0, 0, s * 1.6, Math.PI, 0); ctx.fill();
-    ctx.beginPath(); ctx.arc(0, 0, s, Math.PI, 0); ctx.closePath();
-    ctx.fillStyle = `rgba(30,200,150,${.12 + .1 * night})`; ctx.fill();
-    ctx.save(); ctx.clip();
-    const treeC = `rgb(${mix([70, 140, 80], [16, 200, 129], P.bio / 100)})`;
-    const nTrees = 2 + Math.round(P.bio / 100 * 4);
-    for (let q = 0; q < nTrees; q++) tree(-s * .8 + s * 1.6 * (q + .5) / nTrees, 0, s * (.5 + .4 * ((q * 7 + j) % 3) / 2), k, treeC);
-    for (let q = 0; q < Math.round(P.bio / 14); q++) { ctx.fillStyle = ['#f472b6', '#fbbf24', '#a78bfa'][q % 3]; ctx.beginPath(); ctx.arc(-s * .8 + ((q * 37 + j * 11) % 100) / 100 * s * 1.6, -s * .06, s * .045, 0, TAU); ctx.fill(); }
-    ctx.fillStyle = `rgba(255,230,150,${night * .9})`; for (let q = 0; q < 3; q++) ctx.fillRect(-s * .5 + q * s * .5, -s * .2, 2.5, 2.5);
-    ctx.restore();
-    ctx.strokeStyle = 'rgba(130,255,215,.85)'; ctx.shadowColor = '#10b981'; ctx.shadowBlur = 14; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(0, 0, s, Math.PI, 0); ctx.stroke();
-    ctx.shadowBlur = 0; ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.beginPath(); ctx.arc(0, 0, s * .78, Math.PI * 1.15, Math.PI * 1.45); ctx.stroke();
-    ctx.restore();
+  return [clamp(r * light, 0, 255), clamp(g * light, 0, 255), clamp(b * light, 0, 255), 255];
+});
+
+function makeSea(level) {
+  return buildTexture(function (i) {
+    var h = heights[i];
+    var depth = clamp((level - h) / level, 0, 1);
+    var alpha = clamp((level - h) * 40, 0, 1) * 255;
+    return [mix(55, 8, depth), mix(135, 38, depth), mix(185, 100, depth), alpha];
   });
 }
-function aurora(g) {
-  const k = T.magnet ? 1 : 0; aurora.v = lerp(aurora.v || 0, k, .03); if (aurora.v < .02) return;
-  ctx.save(); ctx.globalCompositeOperation = 'lighter';
-  for (let l = 0; l < 3; l++) {
-    ctx.strokeStyle = ['rgba(16,255,160,', 'rgba(120,120,255,', 'rgba(255,90,200,'][l] + (.1 * aurora.v) + ')'; ctx.lineWidth = 26 - l * 7;
+
+function makeGreen(level) {
+  return buildTexture(function (i) {
+    var v = plants[i];
+    var alpha = clamp((v - level) * 30, 0, 1) * 255;
+    var k = clamp((v - level) * 2, 0, 1);
+    var light = 0.75 + (heights[i] - 0.5) * 0.6;
+    return [mix(18, 70, k) * light, mix(105, 195, k) * light, mix(58, 95, k) * light, alpha];
+  });
+}
+
+var seaTextures = [makeSea(0.36), makeSea(0.45), makeSea(0.54)];
+var greenTextures = [makeGreen(0.62), makeGreen(0.5), makeGreen(0.38)];
+
+var cloudTexture = buildTexture(function (i) {
+  var alpha = clamp((cloudsMap[i] - 0.5) * 3, 0, 1) * 220;
+  return [255, 255, 255, alpha];
+});
+
+function resize() {
+  var box = canvas.getBoundingClientRect();
+  canvas.width = box.width;
+  canvas.height = box.height;
+  W = canvas.width;
+  H = canvas.height;
+  nebula = null;
+  stars = [];
+  for (var i = 0; i < 160; i++) {
+    stars.push({ x: rand(0, W), y: rand(0, H), size: rand(0.4, 1.7), phase: rand(0, 6), color: starColors[Math.floor(Math.random() * starColors.length)] });
+  }
+}
+
+function getPlanet() {
+  var r = Math.min(W, H) * 0.38;
+  return { x: W / 2, y: H * 0.58, r: r };
+}
+
+function getSunAngle() {
+  return time * 0.004 * (params.speed / 40) + 1;
+}
+
+function targetGreen() {
+  var tempGood = 1 - Math.abs(params.temp - 60) / 60;
+  var g = (params.atmo * 0.3 + params.energy * 0.2 + params.water * 0.2 + params.bio * 0.15 + tempGood * 100 * 0.15) / 100;
+  if (sw.nano) g = g + 0.06;
+  if (sw.magnet) g = g + 0.05;
+  g = g - storm * 0.12;
+  return clamp(g, 0, 1);
+}
+
+var nebula = null;
+var shooters = [];
+var starColors = ["255,255,255", "200,225,255", "255,230,200", "255,210,210"];
+
+function makeNebula() {
+  nebula = document.createElement("canvas");
+  nebula.width = W;
+  nebula.height = H;
+  var t = nebula.getContext("2d");
+  var colors = [[150, 50, 170], [40, 120, 210], [210, 70, 130], [30, 170, 150]];
+  t.globalCompositeOperation = "lighter";
+  for (var i = 0; i < 50; i++) {
+    var f = i / 49;
+    var x = W * (-0.1 + 1.2 * f) + rand(-W * 0.08, W * 0.08);
+    var y = H * (0.8 - 0.65 * f) + rand(-H * 0.15, H * 0.15);
+    var r = rand(W * 0.1, W * 0.26);
+    var c = colors[Math.floor(Math.random() * colors.length)];
+    var grad = t.createRadialGradient(x, y, 0, x, y, r);
+    grad.addColorStop(0, rgba(c[0], c[1], c[2], rand(0.05, 0.11)));
+    grad.addColorStop(1, rgba(c[0], c[1], c[2], 0));
+    t.fillStyle = grad;
+    t.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  for (var j = 0; j < 1400; j++) {
+    var sx = rand(0, W);
+    var spread = (Math.random() + Math.random() + Math.random()) / 3 - 0.5;
+    var sy = H * (0.8 - 0.65 * sx / W) + spread * H * 0.7;
+    t.fillStyle = "rgba(220,230,255," + rand(0.15, 0.6) + ")";
+    t.fillRect(sx, sy, 1, 1);
+  }
+}
+
+function drawStars() {
+  for (var i = 0; i < stars.length; i++) {
+    var s = stars[i];
+    var alpha = 0.4 + 0.6 * Math.abs(Math.sin(time * 0.02 + s.phase));
+    var x = (s.x + time * 0.03 * s.size) % W;
+    ctx.fillStyle = "rgba(" + s.color + "," + alpha + ")";
     ctx.beginPath();
-    for (let x = -g.R * 1.1; x <= g.R * 1.1; x += 8) { const y = g.cy - g.R * 1.12 - 20 * l - Math.sin(x * .02 + S.t * .03 + l) * 14 - Math.cos(x * .008) * 20 + (x * x) / (g.R * 14); x === -g.R * 1.1 ? ctx.moveTo(g.cx + x, y) : ctx.lineTo(g.cx + x, y); }
+    ctx.arc(x, s.y, s.size, 0, PI2);
+    ctx.fill();
+    if (s.size > 1.4) {
+      ctx.fillRect(x - s.size * 4, s.y - 0.4, s.size * 8, 0.8);
+      ctx.fillRect(x - 0.4, s.y - s.size * 4, 0.8, s.size * 8);
+    }
+  }
+  if (Math.random() < 0.004) {
+    shooters.push({ x: rand(0, W * 0.8), y: rand(0, H * 0.4), life: 0 });
+  }
+  for (var k = shooters.length - 1; k >= 0; k--) {
+    var sh = shooters[k];
+    sh.life = sh.life + 1;
+    sh.x = sh.x + 14;
+    sh.y = sh.y + 6;
+    var grad = ctx.createLinearGradient(sh.x, sh.y, sh.x - 80, sh.y - 34);
+    grad.addColorStop(0, "rgba(255,255,255,0.9)");
+    grad.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(sh.x, sh.y);
+    ctx.lineTo(sh.x - 80, sh.y - 34);
+    ctx.stroke();
+    if (sh.life > 30) shooters.splice(k, 1);
+  }
+}
+
+function drawBackground() {
+  if (nebula == null) makeNebula();
+  ctx.drawImage(nebula, 0, 0);
+  drawStars();
+}
+
+function drawGlow(x, y, radius, r, g, b, alpha) {
+  var grad = ctx.createRadialGradient(x, y, 0, x, y, radius);
+  grad.addColorStop(0, rgba(r, g, b, alpha));
+  grad.addColorStop(1, rgba(r, g, b, 0));
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, PI2);
+  ctx.fill();
+}
+
+function getSunPosition(p) {
+  var a = getSunAngle();
+  return { x: p.x + Math.cos(a) * Math.min(W * 0.42, p.r * 3), y: Math.max(80, p.y - p.r * 1.3) };
+}
+
+function drawSun(sun) {
+  drawGlow(sun.x, sun.y, 220, 255, 150, 80, 0.2);
+  drawGlow(sun.x, sun.y, 90, 255, 200, 130, 0.5);
+  ctx.strokeStyle = "rgba(255,230,180,0.25)";
+  ctx.lineWidth = 2;
+  for (var i = 0; i < 12; i++) {
+    var a = i * (PI2 / 12) + time * 0.002;
+    ctx.beginPath();
+    ctx.moveTo(sun.x + Math.cos(a) * 30, sun.y + Math.sin(a) * 30);
+    ctx.lineTo(sun.x + Math.cos(a) * 110, sun.y + Math.sin(a) * 110);
+    ctx.stroke();
+  }
+  drawGlow(sun.x, sun.y, 28, 255, 255, 240, 1);
+}
+
+function drawMoon(p, front) {
+  var a = time * 0.011;
+  var x = p.x + Math.cos(a) * p.r * 1.9;
+  var y = p.y - p.r * 0.5 + Math.sin(a) * p.r * 0.5;
+  var isFront = Math.sin(a) > 0;
+  if (isFront != front) return;
+  var r = p.r * 0.05;
+  var grad = ctx.createRadialGradient(x - r * 0.4, y - r * 0.4, 1, x, y, r);
+  grad.addColorStop(0, "#d9c3a8");
+  grad.addColorStop(1, "#4a3d35");
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, PI2);
+  ctx.fill();
+  ctx.fillStyle = "rgba(30,20,15,0.4)";
+  ctx.beginPath();
+  ctx.arc(x - r * 0.3, y - r * 0.1, r * 0.25, 0, PI2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(x + r * 0.3, y + r * 0.3, r * 0.18, 0, PI2);
+  ctx.fill();
+}
+
+function drawLayer(texture, p, offset, alpha) {
+  var width = p.r * 4;
+  ctx.globalAlpha = alpha;
+  ctx.drawImage(texture, p.x - p.r - offset, p.y - p.r, width, p.r * 2);
+  ctx.drawImage(texture, p.x - p.r - offset + width, p.y - p.r, width, p.r * 2);
+  ctx.globalAlpha = 1;
+}
+
+function drawPlanet(p) {
+  var halo = ctx.createRadialGradient(p.x, p.y, p.r * 0.95, p.x, p.y, p.r * 1.4);
+  var blue = Math.max(params.atmo / 100, green);
+  halo.addColorStop(0, rgba(mix(255, 100, blue), mix(140, 200, blue), mix(80, 255, blue), 0.5));
+  halo.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = halo;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, p.r * 1.4, 0, PI2);
+  ctx.fill();
+
+  var width = p.r * 4;
+  var offset = (rotation * width) % width;
+  var cloudOffset = (rotation * 1.5 * width) % width;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, p.r, 0, PI2);
+  ctx.clip();
+
+  drawLayer(landTexture, p, offset, 1);
+  drawLayer(greenTextures[0], p, offset, clamp(green * 3, 0, 1));
+  drawLayer(greenTextures[1], p, offset, clamp(green * 3 - 1, 0, 1));
+  drawLayer(greenTextures[2], p, offset, clamp(green * 3 - 2, 0, 1));
+  drawLayer(seaTextures[0], p, offset, clamp(params.water / 33, 0, 1));
+  drawLayer(seaTextures[1], p, offset, clamp((params.water - 33) / 33, 0, 1));
+  drawLayer(seaTextures[2], p, offset, clamp((params.water - 66) / 34, 0, 1));
+
+  for (var i = 0; i < craters.length; i++) {
+    var c = craters[i];
+    for (var k = 0; k < 2; k++) {
+      var cx = p.x - p.r - offset + c.u * width + k * width;
+      ctx.fillStyle = "rgba(30,8,4,0.45)";
+      ctx.beginPath();
+      ctx.arc(cx, p.y - p.r + c.v * p.r * 2, c.size * p.r, 0, PI2);
+      ctx.fill();
+    }
+  }
+
+  drawLayer(cloudTexture, p, cloudOffset, 0.25 + params.water / 200);
+
+  if (sw.rain) {
+    ctx.strokeStyle = "rgba(150,210,255,0.5)";
+    ctx.beginPath();
+    for (var d = 0; d < 50; d++) {
+      if (drops[d] == undefined) {
+        drops[d] = { x: rand(-1, 1), y: rand(-1, 1) };
+      }
+      drops[d].y = drops[d].y + 0.035;
+      if (drops[d].y > 1) {
+        drops[d].y = -1;
+        drops[d].x = rand(-1, 1);
+      }
+      var rx = p.x + drops[d].x * p.r;
+      var ry = p.y + drops[d].y * p.r;
+      ctx.moveTo(rx, ry);
+      ctx.lineTo(rx - 2, ry + 10);
+    }
+    ctx.stroke();
+  }
+
+  var angle = getSunAngle();
+  var lx = Math.cos(angle) * 0.6;
+  var shade = ctx.createRadialGradient(p.x + lx * p.r, p.y - p.r * 0.3, p.r * 0.1, p.x, p.y, p.r * 1.2);
+  shade.addColorStop(0, "rgba(0,0,0,0)");
+  shade.addColorStop(0.5, "rgba(4,6,16,0.2)");
+  shade.addColorStop(0.85, "rgba(3,4,12,0.6)");
+  shade.addColorStop(1, "rgba(2,3,10,0.92)");
+  ctx.fillStyle = shade;
+  ctx.fillRect(p.x - p.r, p.y - p.r, p.r * 2, p.r * 2);
+  var limb = ctx.createRadialGradient(p.x, p.y, p.r * 0.6, p.x, p.y, p.r);
+  limb.addColorStop(0, "rgba(0,0,0,0)");
+  limb.addColorStop(1, "rgba(0,10,20,0.55)");
+  ctx.fillStyle = limb;
+  ctx.fillRect(p.x - p.r, p.y - p.r, p.r * 2, p.r * 2);
+  ctx.restore();
+}
+
+function drawMagnetField(p, sun) {
+  if (!sw.magnet) return;
+  var sunAngle = Math.atan2(sun.y - p.y, sun.x - p.x);
+  var sunSide = Math.cos(sunAngle);
+  var shells = [1.5, 1.9, 2.4, 3.0];
+  var colors = [[120, 255, 220], [100, 220, 255], [130, 170, 255], [180, 140, 255]];
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.lineCap = "round";
+
+  for (var i = 0; i < shells.length; i++) {
+    var L = shells[i];
+    var c = colors[i];
+    var start = Math.asin(Math.sqrt(1 / L)) + 0.02;
+    for (var side = -1; side <= 1; side += 2) {
+      var stretch = 1 - 0.3 * side * sunSide;
+      var points = [];
+      for (var th = start; th < Math.PI - start; th += 0.05) {
+        var r = L * Math.sin(th) * Math.sin(th) * p.r;
+        points.push({ x: p.x + side * stretch * r * Math.sin(th), y: p.y - r * Math.cos(th) });
+      }
+
+      ctx.strokeStyle = rgba(c[0], c[1], c[2], 0.07);
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      for (var a = 0; a < points.length; a++) {
+        if (a == 0) ctx.moveTo(points[a].x, points[a].y);
+        else ctx.lineTo(points[a].x, points[a].y);
+      }
+      ctx.stroke();
+
+      ctx.strokeStyle = rgba(c[0], c[1], c[2], 0.35);
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+
+      for (var q = 0; q < 4; q++) {
+        var f = (time * 0.003 * (1 + i * 0.15) + q / 4 + i * 0.13) % 1;
+        if (side == 1) f = 1 - f;
+        var index = Math.floor(f * (points.length - 1));
+        for (var tail = 0; tail < 6; tail++) {
+          var ti = index - tail * (side == 1 ? -1 : 1);
+          if (ti < 0 || ti >= points.length) continue;
+          drawGlow(points[ti].x, points[ti].y, 5 - tail * 0.6, c[0], c[1], c[2], 0.7 - tail * 0.1);
+        }
+      }
+    }
+  }
+
+  for (var k = 0; k < 3; k++) {
+    var phase = (time * 0.004 + k / 3) % 1;
+    var radius = p.r * (3.3 - phase * 1.9);
+    var alpha = Math.sin(phase * Math.PI) * 0.5;
+    ctx.strokeStyle = rgba(150, 210, 255, alpha);
+    ctx.lineWidth = 2 + (1 - phase) * 2;
+    ctx.beginPath();
+    for (var w = -0.85; w <= 0.85; w += 0.04) {
+      var wave = Math.sin(w * 18 + time * 0.06) * 3;
+      var px = p.x + Math.cos(sunAngle + w) * (radius + wave);
+      var py = p.y + Math.sin(sunAngle + w) * (radius + wave);
+      if (w < -0.84) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
     ctx.stroke();
   }
   ctx.restore();
 }
-function draw() {
-  const g = geom(), sunA = S.t * .004 * (P.speed / 40) + 1;
-  const night = T.auto || true ? .5 - .5 * Math.cos(sunA * 1.0) : 0, amb = 1 - night * .5;
-  ctx.clearRect(0, 0, W, H); bg(amb);
-  // солнце + Фобос
-  const sx = g.cx + Math.cos(sunA) * W * .42, sy = H * .22 - Math.abs(Math.sin(sunA)) * H * .08;
-  const sg = ctx.createRadialGradient(sx, sy, 0, sx, sy, 60); sg.addColorStop(0, 'rgba(255,240,200,.9)'); sg.addColorStop(.3, 'rgba(255,170,90,.3)'); sg.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = sg; ctx.beginPath(); ctx.arc(sx, sy, 60, 0, TAU); ctx.fill();
-  const ma = S.t * .012; ctx.fillStyle = '#8b7766'; ctx.beginPath(); ctx.ellipse(g.cx + Math.cos(ma) * g.R * 1.9, g.cy - g.R * .9 + Math.sin(ma) * g.R * .35, 9, 7, .4, 0, TAU); ctx.fill();
-  planet(g, S.green, sunA); aurora(g); drawDomes(g, S.green, night);
-  bots.forEach(b => { b.a += b.s; const x = g.cx + Math.cos(b.a) * g.R * b.d, y = g.cy + Math.sin(b.a) * g.R * b.d * .8; ctx.fillStyle = '#8bffd8'; ctx.shadowColor = '#10b981'; ctx.shadowBlur = 8; ctx.beginPath(); ctx.arc(x, y, b.z, 0, TAU); ctx.fill(); });
-  ctx.shadowBlur = 0;
-  // метеориты
-  meteors = meteors.filter(m => {
-    m.life++; const sp = 9; m.x += Math.cos(Math.PI / 2 + (m.a + Math.PI / 2) * .15) * sp * .35; m.y += sp;
-    const tg = ctx.createLinearGradient(m.x, m.y, m.x - 30, m.y - 130); tg.addColorStop(0, 'rgba(255,200,120,.95)'); tg.addColorStop(1, 'rgba(255,100,40,0)');
-    ctx.strokeStyle = tg; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.lineTo(m.x - 30, m.y - 130); ctx.stroke();
-    const hit = Math.hypot(m.x - g.cx, m.y - g.cy) < g.R * 1.02;
-    if (hit) { S.flash = 1; const a = Math.atan2(m.y - g.cy, m.x - g.cx); crater(-S.rot + rnd(-.7, .7), Math.max(-1.2, Math.min(1.2, Math.sin(a) * 1.0)), 20 + (Math.random() * 14 | 0)); S.green = Math.max(0, S.green - .05); log('[WARN] Удар метеорита! Экосистема повреждена', 'warn'); ach('meteor', 'Звёздный гость'); return false; }
-    return m.y < H + 50;
-  });
-  if (S.flash > .01) { ctx.fillStyle = `rgba(255,200,140,${S.flash * .35})`; ctx.fillRect(0, 0, W, H); S.flash *= .9; }
-  // пылевая буря
-  if (S.storm > 0) {
-    while (dust.length < 120) dust.push({ x: rnd(0, W), y: rnd(0, H), s: rnd(6, 16), l: rnd(10, 40) });
-    ctx.fillStyle = `rgba(190,95,50,${.22 * S.storm})`; ctx.fillRect(0, 0, W, H);
-    ctx.strokeStyle = `rgba(240,160,100,${.5 * S.storm})`; ctx.lineWidth = 1.5; ctx.beginPath();
-    dust.forEach(d => { d.x -= d.s; if (d.x < -50) { d.x = W + 20; d.y = rnd(0, H); } ctx.moveTo(d.x, d.y); ctx.lineTo(d.x + d.l, d.y + 3); });
-    ctx.stroke(); S.storm -= .0012; if (S.storm <= 0) { S.storm = 0; log('[OK] Буря утихла, панели очищены', 'ok'); }
+
+function drawAurora(p) {
+  if (!sw.magnet) return;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  for (var pole = -1; pole <= 1; pole += 2) {
+    var base = pole * Math.PI / 2;
+    var outer = [];
+    var inner = [];
+    for (var i = 0; i <= 60; i++) {
+      var a = base + (i / 60 - 0.5) * 1.5;
+      var h = p.r * (0.06 + 0.16 * Math.abs(Math.sin(i * 0.35 + time * 0.03)) * (0.6 + 0.4 * Math.sin(i * 0.15 - time * 0.02)));
+      outer.push({ x: p.x + Math.cos(a) * (p.r + h), y: p.y + Math.sin(a) * (p.r + h), a: a });
+      inner.push({ x: p.x + Math.cos(a) * p.r * 0.995, y: p.y + Math.sin(a) * p.r * 0.995 });
+    }
+    var grad = ctx.createRadialGradient(p.x, p.y, p.r, p.x, p.y, p.r * 1.25);
+    grad.addColorStop(0, "rgba(80,255,170,0.75)");
+    grad.addColorStop(0.5, "rgba(60,200,220,0.35)");
+    grad.addColorStop(1, "rgba(170,90,255,0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(inner[0].x, inner[0].y);
+    for (var j = 1; j < inner.length; j++) ctx.lineTo(inner[j].x, inner[j].y);
+    for (var k = outer.length - 1; k >= 0; k--) ctx.lineTo(outer[k].x, outer[k].y);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(160,255,210,0.18)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (var m = 0; m < outer.length; m = m + 2) {
+      ctx.moveTo(inner[m].x, inner[m].y);
+      ctx.lineTo(outer[m].x, outer[m].y);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawFir(x, baseY, h, number, bio, dark) {
+  var sway = Math.sin(time * 0.03 + number * 1.7 + x * 0.1) * h * 0.05;
+  var green = mix(0, 1, bio / 100);
+  var r = Math.round(mix(30, 22, green) * dark);
+  var g = Math.round(mix(105, 175, green) * dark);
+  var b = Math.round(mix(70, 95, green) * dark);
+  var colorDark = "rgb(" + Math.round(r * 0.55) + "," + Math.round(g * 0.55) + "," + Math.round(b * 0.6) + ")";
+  var colorLight = "rgb(" + Math.min(255, Math.round(r * 1.25)) + "," + Math.min(255, Math.round(g * 1.25)) + "," + Math.min(255, Math.round(b * 1.2)) + ")";
+
+  ctx.fillStyle = "#3a2a1c";
+  ctx.fillRect(x - h * 0.025, baseY - h * 0.1, h * 0.05, h * 0.1);
+
+  var tiers = 5;
+  for (var t = 0; t < tiers; t++) {
+    var top = baseY - h + t * h * 0.17;
+    var bottom = top + h * 0.34;
+    var width = h * (0.1 + 0.075 * t);
+    var dx = sway * (1 - t / tiers);
+    var apexX = x + dx;
+    var bottomX = x + dx * 0.4;
+
+    var zig = [];
+    for (var k = 0; k <= 6; k++) {
+      var zx = bottomX + width - (k / 6) * width * 2;
+      var zy = bottom;
+      if (k % 2 == 1) zy = bottom - h * 0.045;
+      zig.push({ x: zx, y: zy });
+    }
+
+    ctx.fillStyle = colorDark;
+    ctx.beginPath();
+    ctx.moveTo(apexX, top);
+    for (var a = 0; a < zig.length; a++) ctx.lineTo(zig[a].x, zig[a].y);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = colorLight;
+    ctx.beginPath();
+    ctx.moveTo(apexX, top);
+    for (var c = 0; c <= 3; c++) ctx.lineTo(zig[c].x, zig[c].y);
+    ctx.lineTo(apexX, bottom - h * 0.02);
+    ctx.closePath();
+    ctx.fill();
   }
 }
 
-/* ---------- цикл ---------- */
-function frame() {
-  S.t += T.auto ? 1 : .15; S.rot += .0018 * (.3 + P.speed / 50);
-  S.green = lerp(S.green, targetGreen(), .03);
-  if (Math.random() < .0006) spawnMeteor();
-  draw();
-  if (S.t % 8 < 1) hud();
-  requestAnimationFrame(frame);
-}
-function hud() {
-  const idx = Math.round(S.green * 100);
-  $('idx').textContent = idx; $('bar').style.width = idx + '%';
-  $('rank').textContent = RANKS.filter(r => idx >= r[0]).pop()[1];
-  const tc = Math.round(-63 + P.temp * .9 + S.green * 10);
-  $('meters').innerHTML = `<div>Температура<b>${tc} °C</b></div><div>O₂<b>${(P.atmo * .21).toFixed(1)}%</b></div><div>Влажность<b>${P.water}%</b></div><div>Куполов<b>${domes.filter(d => d.g > .5).length}</b></div>`;
-  $('clock').textContent = 'Сол ' + (1 + Math.floor(S.t / 600));
-  [[25, 'Первый росток'], [50, 'Дыхание Марса'], [75, 'Зелёная планета'], [95, 'Эдем достигнут!']].forEach(([v, m]) => idx >= v && ach('i' + v, m));
+function drawOneDome(x, y, angle, size, number, night) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle + Math.PI / 2);
+  var s = size;
+
+  ctx.fillStyle = "#4b5563";
+  ctx.fillRect(-s * 1.1, 0, s * 2.2, s * 0.12);
+
+  ctx.strokeStyle = "#9aa7b5";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(s * 1.35, 0);
+  ctx.lineTo(s * 1.35, -s * 0.5);
+  ctx.stroke();
+  if (Math.sin(time * 0.08 + number) > 0) {
+    ctx.fillStyle = "#ff4d4d";
+    ctx.beginPath();
+    ctx.arc(s * 1.35, -s * 0.52, 2, 0, PI2);
+    ctx.fill();
+  }
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(0, 0, s, Math.PI, 0);
+  ctx.closePath();
+  ctx.clip();
+
+  var inside = ctx.createLinearGradient(0, -s, 0, 0);
+  inside.addColorStop(0, "rgba(30,90,110,0.4)");
+  inside.addColorStop(1, rgba(mix(90, 255, night), mix(160, 200, night), mix(150, 120, night), 0.5));
+  ctx.fillStyle = inside;
+  ctx.fillRect(-s, -s, s * 2, s);
+
+  ctx.fillStyle = "#1c5a3a";
+  ctx.beginPath();
+  ctx.moveTo(-s, 0);
+  ctx.quadraticCurveTo(-s * 0.4, -s * 0.3, 0, -s * 0.1);
+  ctx.quadraticCurveTo(s * 0.5, 0, s, -s * 0.12);
+  ctx.lineTo(s, 0);
+  ctx.fill();
+
+  var trees = 2 + Math.round(params.bio / 35);
+  for (var row = 0; row < 2; row++) {
+    for (var i = 0; i < trees; i++) {
+      var tx = -s * 0.8 + (i + 0.5 + row * 0.5) * (s * 1.6 / trees);
+      var th = s * (0.55 + 0.12 * ((i + number + row) % 4));
+      if (row == 0) {
+        drawFir(tx, -s * 0.06, th * 0.8, i + number, params.bio, 0.6);
+      } else {
+        drawFir(tx, -s * 0.02, th, i + number + 7, params.bio, 1);
+      }
+    }
+  }
+
+  var flowers = Math.round(params.bio / 10);
+  var flowerColors = ["#f472b6", "#fbbf24", "#a78bfa"];
+  for (var f = 0; f < flowers; f++) {
+    ctx.fillStyle = flowerColors[f % 3];
+    ctx.beginPath();
+    ctx.arc(-s * 0.85 + ((f * 37 + number * 11) % 100) / 100 * s * 1.7, -s * 0.05, s * 0.03, 0, PI2);
+    ctx.fill();
+  }
+
+  if (night > 0.3) {
+    ctx.fillStyle = "rgba(255,230,150," + night + ")";
+    for (var q = 0; q < 4; q++) {
+      ctx.beginPath();
+      ctx.arc(-s * 0.6 + q * s * 0.4, -s * 0.55, 1.8, 0, PI2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+
+  ctx.strokeStyle = "rgba(180,255,235,0.9)";
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.arc(0, 0, s, Math.PI, 0);
+  ctx.stroke();
+
+  ctx.strokeStyle = "rgba(190,255,240,0.25)";
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, s * 0.5, s, 0, Math.PI, 0);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.ellipse(0, 0, s, s * 0.5, 0, Math.PI, 0);
+  ctx.stroke();
+
+  ctx.strokeStyle = "rgba(255,255,255,0.6)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(0, 0, s * 0.85, Math.PI * 1.15, Math.PI * 1.4);
+  ctx.stroke();
+  ctx.restore();
 }
 
-/* ---------- старт ---------- */
-resize(); syncToggles();
-log('[INFO] Инициализация EcoSphere: Mars & Forest…');
-log('[OK] Соединение с биокуполом установлено', 'ok');
-const RL = [['ok', '[OK] Корневая система хвойных успешно адаптирована к марсианскому грунту'], ['info', '[INFO] Мониторинг влажности под биокуполом: стабильно'], ['ok', '[OK] Микориза связала перхлоратные слои с корневой сетью'], ['warn', '[WARN] Пылевая буря в секторе 7 — солнечные панели на 80%'], ['info', '[INFO] Фотосинтез: уровень O₂ растёт'], ['ok', '[OK] Первые мхи закрепились на реголите'], ['info', '[INFO] Спутник связи: задержка 12 мин, канал стабилен']];
-setInterval(() => { const [t, m] = RL[Math.random() * RL.length | 0]; log(m, t); }, 5000);
-frame();
+function drawDomes(p) {
+  var count = Math.round(params.energy / 100 * 7);
+  if (params.atmo > 10) count = count + 1;
+  if (count > 8) count = 8;
+
+  var list = [];
+  var light = getSunAngle();
+  for (var i = 0; i < domes.length; i++) {
+    var d = domes[i];
+    var wanted = 1;
+    if (d.auto && d.number >= count) wanted = 0;
+    d.grow = d.grow + (wanted - d.grow) * 0.06;
+    if (d.grow > 0.02) {
+      var angle = -Math.PI / 2 + d.angle;
+      var size = p.r * (0.105 + 0.08 * (0.3 + params.atmo / 140)) * d.grow;
+      var x = p.x + Math.cos(angle) * p.r * 0.99;
+      var y = p.y + Math.sin(angle) * p.r * 0.99;
+      var dark = -(Math.cos(angle) * Math.cos(light) + Math.sin(angle) * -0.4);
+      list.push({ x: x, y: y, angle: angle, size: size, number: d.number, night: clamp(dark + 0.3, 0, 1) });
+    }
+  }
+  list.sort(function (a, b) {
+    return a.x - b.x;
+  });
+
+  ctx.lineWidth = 2;
+  ctx.setLineDash([2, 12]);
+  ctx.lineDashOffset = -time * (0.5 + params.energy / 40);
+  ctx.strokeStyle = "rgba(150,255,255,0.9)";
+  for (var k = 0; k < list.length - 1; k++) {
+    var a = list[k];
+    var b = list[k + 1];
+    var mx = (a.x + b.x) / 2 + ((a.x + b.x) / 2 - p.x) * 0.06;
+    var my = (a.y + b.y) / 2 + ((a.y + b.y) / 2 - p.y) * 0.06;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.quadraticCurveTo(mx, my, b.x, b.y);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  for (var n = 0; n < list.length; n++) {
+    var dm = list[n];
+    drawOneDome(dm.x, dm.y, dm.angle, dm.size, dm.number, dm.night);
+  }
+  return list.length;
+}
+
+function drawBots(p) {
+  var wanted = 0;
+  if (sw.nano) wanted = 44;
+  while (bots.length < wanted) {
+    bots.push({ a: rand(0, PI2), dist: rand(1.05, 1.4), speed: rand(0.003, 0.009), size: rand(1, 2.4), px: 0, py: 0 });
+  }
+  while (bots.length > wanted) {
+    bots.pop();
+  }
+  for (var i = 0; i < bots.length; i++) {
+    var b = bots[i];
+    b.a = b.a + b.speed;
+    var x = p.x + Math.cos(b.a) * p.r * b.dist;
+    var y = p.y + Math.sin(b.a) * p.r * b.dist * 0.8;
+    ctx.strokeStyle = "rgba(140,255,220,0.5)";
+    ctx.lineWidth = b.size * 0.8;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x - (x - b.px) * 5, y - (y - b.py) * 5);
+    ctx.stroke();
+    ctx.fillStyle = "#eafff8";
+    ctx.beginPath();
+    ctx.arc(x, y, b.size * 0.8, 0, PI2);
+    ctx.fill();
+    b.px = x;
+    b.py = y;
+  }
+}
+
+function spawnMeteor() {
+  var p = getPlanet();
+  var startX = rand(W * 0.1, W * 0.9);
+  var targetX = p.x + rand(-p.r * 0.7, p.r * 0.7);
+  var targetY = p.y + rand(-p.r * 0.3, p.r * 0.5);
+  var dx = targetX - startX;
+  var dy = targetY + 20;
+  var len = Math.sqrt(dx * dx + dy * dy);
+  meteors.push({ x: startX, y: -20, vx: dx / len * 10, vy: dy / len * 10, trail: [] });
+  addLog("[WARN] Виявлено метеорит! Щити на максимум", "warn");
+}
+
+function drawMeteors(p) {
+  for (var i = meteors.length - 1; i >= 0; i--) {
+    var m = meteors[i];
+    m.x = m.x + m.vx;
+    m.y = m.y + m.vy;
+    m.trail.push({ x: m.x, y: m.y });
+    if (m.trail.length > 20) m.trail.shift();
+
+    for (var t = 1; t < m.trail.length; t++) {
+      var f = t / m.trail.length;
+      ctx.strokeStyle = "rgba(255," + Math.round(120 + 100 * f) + ",70," + f * 0.6 + ")";
+      ctx.lineWidth = 2 + 8 * f;
+      ctx.beginPath();
+      ctx.moveTo(m.trail[t - 1].x, m.trail[t - 1].y);
+      ctx.lineTo(m.trail[t].x, m.trail[t].y);
+      ctx.stroke();
+    }
+    drawGlow(m.x, m.y, 28, 255, 170, 90, 0.8);
+    drawGlow(m.x, m.y, 8, 255, 255, 230, 1);
+
+    var dx = m.x - p.x;
+    var dy = m.y - p.y;
+    if (Math.sqrt(dx * dx + dy * dy) < p.r * 0.96) {
+      flash = 1;
+      for (var s = 0; s < 40; s++) {
+        sparks.push({ x: m.x, y: m.y, vx: rand(-4, 4), vy: rand(-5, 1), life: rand(30, 60) });
+      }
+      var width = p.r * 4;
+      var offset = (rotation * width) % width;
+      var u = ((dx + p.r + offset) % width) / width;
+      var v = (dy + p.r) / (p.r * 2);
+      craters.push({ u: u, v: v, size: rand(0.05, 0.1) });
+      if (craters.length > 8) craters.shift();
+      green = Math.max(0, green - 0.05);
+      addLog("[WARN] Удар метеорита! Екосистему пошкоджено", "warn");
+      achievement("meteor", "Зоряний гість");
+      meteors.splice(i, 1);
+    } else if (m.y > H + 50) {
+      meteors.splice(i, 1);
+    }
+  }
+
+  for (var j = sparks.length - 1; j >= 0; j--) {
+    var sp = sparks[j];
+    sp.x = sp.x + sp.vx;
+    sp.y = sp.y + sp.vy;
+    sp.vy = sp.vy + 0.08;
+    sp.life = sp.life - 1;
+    ctx.fillStyle = "rgba(255,190,110," + Math.min(1, sp.life / 30) + ")";
+    ctx.fillRect(sp.x, sp.y, 2, 2);
+    if (sp.life <= 0) sparks.splice(j, 1);
+  }
+
+  if (flash > 0.01) {
+    ctx.fillStyle = "rgba(255,210,150," + flash * 0.3 + ")";
+    ctx.fillRect(0, 0, W, H);
+    flash = flash * 0.9;
+  }
+}
+
+function drawStorm() {
+  if (storm <= 0) return;
+  while (dust.length < 120) {
+    dust.push({ x: rand(0, W), y: rand(0, H), speed: rand(8, 20), len: rand(20, 60) });
+  }
+  var power = Math.min(1, storm * 2);
+  ctx.fillStyle = "rgba(190,95,50," + 0.25 * power + ")";
+  ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = "rgba(245,175,115," + 0.4 * power + ")";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  for (var i = 0; i < dust.length; i++) {
+    var d = dust[i];
+    d.x = d.x - d.speed;
+    if (d.x < -80) {
+      d.x = W + 20;
+      d.y = rand(0, H);
+    }
+    ctx.moveTo(d.x, d.y);
+    ctx.lineTo(d.x + d.len, d.y + 2);
+  }
+  ctx.stroke();
+  storm = storm - 0.0012;
+  if (storm <= 0) {
+    storm = 0;
+    addLog("[OK] Буря вщухла, панелі очищено", "ok");
+  }
+}
+
+var ranks = [
+  [0, "Мертва пустка"],
+  [15, "Реголіт і надії"],
+  [30, "Перші паростки"],
+  [50, "Подих Марса"],
+  [70, "Зелений оазис"],
+  [85, "Нова Земля"],
+  [97, "Едем"]
+];
+
+function updateHud(domeCount) {
+  var index = Math.round(green * 100);
+  document.getElementById("idx").textContent = index;
+  document.getElementById("bar").style.width = index + "%";
+  var rankName = ranks[0][1];
+  for (var i = 0; i < ranks.length; i++) {
+    if (index >= ranks[i][0]) rankName = ranks[i][1];
+  }
+  document.getElementById("rank").textContent = rankName;
+  var temperature = Math.round(-63 + params.temp * 0.9 + green * 10);
+  document.getElementById("mTemp").textContent = temperature + " °C";
+  document.getElementById("mO2").textContent = (params.atmo * 0.21).toFixed(1) + "%";
+  document.getElementById("mWater").textContent = params.water + "%";
+  document.getElementById("mDomes").textContent = domeCount;
+  document.getElementById("clock").textContent = "Сол " + (1 + Math.floor(time / 600));
+  if (index >= 25) achievement("i25", "Перший росток");
+  if (index >= 50) achievement("i50", "Подих Марса");
+  if (index >= 75) achievement("i75", "Зелена планета");
+  if (index >= 95) achievement("i95", "Едем досягнуто!");
+}
+
+var domeCountShown = 0;
+
+function draw() {
+  var p = getPlanet();
+  var sun = getSunPosition(p);
+  ctx.clearRect(0, 0, W, H);
+  drawBackground();
+  drawSun(sun);
+  drawMoon(p, false);
+  drawMagnetField(p, sun);
+  drawPlanet(p);
+  drawAurora(p);
+  domeCountShown = drawDomes(p);
+  drawMoon(p, true);
+  drawBots(p);
+  drawMeteors(p);
+  drawStorm();
+}
+
+function loop() {
+  if (sw.auto) {
+    time = time + 1;
+  } else {
+    time = time + 0.15;
+  }
+  rotation = rotation + 0.0018 * (0.3 + params.speed / 50);
+  green = green + (targetGreen() - green) * 0.03;
+  if (Math.random() < 0.0006) spawnMeteor();
+  draw();
+  if (Math.floor(time) % 8 == 0) updateHud(domeCountShown);
+  requestAnimationFrame(loop);
+}
+
+function paramMessage(name) {
+  var v = params[name];
+  if (name == "atmo") {
+    if (v > 60) addLog("[OK] Баланс атмосфери зміщено в бік кисню", "ok");
+    else if (v < 25) addLog("[WARN] Високий рівень CO2 під куполом", "warn");
+    else addLog("[INFO] Склад атмосфери скориговано", "info");
+  }
+  if (name == "energy") {
+    if (v > 60) addLog("[OK] Коренева система отримує енергію від сонячних батарей", "ok");
+    else addLog("[INFO] Енергопотік перерозподілено", "info");
+  }
+  if (name == "water") {
+    if (v > 60) addLog("[OK] Підльодові резервуари розкрито: з'являються озера", "ok");
+    else addLog("[INFO] Витрату води змінено", "info");
+  }
+  if (name == "temp") {
+    if (v > 85) addLog("[WARN] Перегрів теплового щита", "warn");
+    else if (v < 30) addLog("[WARN] Купол промерзає", "warn");
+    else addLog("[OK] Температура в комфортному діапазоні", "ok");
+  }
+  if (name == "bio") {
+    if (v > 60) addLog("[OK] Нові види хвойних і квітів прижилися", "ok");
+    else addLog("[INFO] Банк насіння оновлено", "info");
+  }
+  if (name == "speed") {
+    addLog("[INFO] Темп часу змінено", "info");
+  }
+}
+
+function connectSlider(name) {
+  var input = document.getElementById(name);
+  var output = document.getElementById(name + "Out");
+  input.oninput = function () {
+    params[name] = Number(input.value);
+    output.textContent = params[name] + "%";
+  };
+  input.onchange = function () {
+    paramMessage(name);
+  };
+}
+
+function setParams(values) {
+  for (var i = 0; i < paramNames.length; i++) {
+    var name = paramNames[i];
+    if (values[name] != undefined) {
+      params[name] = values[name];
+      document.getElementById(name).value = values[name];
+      document.getElementById(name + "Out").textContent = values[name] + "%";
+    }
+  }
+}
+
+function connectToggle(name) {
+  var button = document.getElementById(name);
+  button.onclick = function () {
+    sw[name] = !sw[name];
+    button.setAttribute("aria-pressed", sw[name]);
+    if (sw[name]) {
+      button.querySelector("b").textContent = "УВІМК";
+    } else {
+      button.querySelector("b").textContent = "ВИМК";
+    }
+    if (name == "nano") {
+      if (sw.nano) addLog("[OK] Нано-боти запущено: очищення ґрунту від перхлоратів", "ok");
+      else addLog("[WARN] Нано-боти зупинено", "warn");
+    }
+    if (name == "magnet") {
+      if (sw.magnet) addLog("[OK] Магнітосфера активна: над полюсом сяє аврора", "ok");
+      else addLog("[WARN] Магнітне поле вимкнено", "warn");
+    }
+    if (name == "rain") {
+      if (sw.rain) addLog("[OK] Зрошення запущено", "ok");
+      else addLog("[INFO] Зрошення зупинено", "info");
+    }
+    if (name == "auto") {
+      addLog("[INFO] Зміну дня і ночі перемкнуто", "info");
+    }
+  };
+}
+
+for (var s = 0; s < paramNames.length; s++) {
+  connectSlider(paramNames[s]);
+}
+for (var t = 0; t < swNames.length; t++) {
+  connectToggle(swNames[t]);
+}
+
+document.getElementById("bMeteor").onclick = spawnMeteor;
+
+document.getElementById("bStorm").onclick = function () {
+  storm = 1;
+  addLog("[WARN] Наближається пилова буря!", "warn");
+  achievement("storm", "Пережив бурю");
+};
+
+document.getElementById("bRand").onclick = function () {
+  setParams({
+    atmo: Math.floor(rand(0, 100)),
+    energy: Math.floor(rand(0, 100)),
+    water: Math.floor(rand(0, 100)),
+    temp: Math.floor(rand(20, 80)),
+    bio: Math.floor(rand(0, 100))
+  });
+  addLog("[INFO] Параметри згенеровано випадково", "info");
+};
+
+document.getElementById("pMars").onclick = function () {
+  setParams({ atmo: 5, energy: 15, water: 5, temp: 20, bio: 0 });
+  addLog("[INFO] Завантажено сценарій Марс", "info");
+};
+
+document.getElementById("pTerra").onclick = function () {
+  setParams({ atmo: 50, energy: 55, water: 45, temp: 55, bio: 35 });
+  addLog("[INFO] Завантажено сценарій Терраформ", "info");
+};
+
+document.getElementById("pEden").onclick = function () {
+  setParams({ atmo: 90, energy: 85, water: 80, temp: 65, bio: 90 });
+  addLog("[INFO] Завантажено сценарій Едем", "info");
+};
+
+canvas.onclick = function (e) {
+  var box = canvas.getBoundingClientRect();
+  var p = getPlanet();
+  var dx = e.clientX - box.left - p.x;
+  var dy = e.clientY - box.top - p.y;
+  if (Math.sqrt(dx * dx + dy * dy) > p.r * 1.25) return;
+  if (domes.length >= 14) {
+    addLog("[WARN] Досягнуто ліміту куполів", "warn");
+    return;
+  }
+  var angle = clamp(Math.atan2(dy, dx) + Math.PI / 2, -1.45, 1.45);
+  domes.push({ angle: angle, grow: 0, auto: false, number: domes.length });
+  addLog("[OK] Збудовано новий біокупол вручну", "ok");
+  achievement("build", "Перший будівельник");
+};
+
+window.onresize = resize;
+
+resize();
+addLog("[INFO] Ініціалізація EcoSphere: Mars & Forest...", "info");
+addLog("[OK] З'єднання з біокуполом встановлено", "ok");
+
+setInterval(function () {
+  var item = randomLogs[Math.floor(Math.random() * randomLogs.length)];
+  addLog(item[1], item[0]);
+}, 5000);
+
+loop();
