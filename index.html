@@ -55,6 +55,18 @@
       <button class="toggle" id="auto" aria-pressed="true"><span class="dot"></span>Зміна дня <b>УВІМК</b></button>
     </div>
 
+    <h2>Будівництво</h2>
+    <div class="btns">
+      <button class="btn tool" id="tDome" aria-pressed="true">Купол</button>
+      <button class="btn tool" id="tWind" aria-pressed="false">Вітряк</button>
+      <button class="btn tool" id="tSolar" aria-pressed="false">Сонячна ферма</button>
+    </div>
+    <div class="btns">
+      <button class="btn tool" id="tWater" aria-pressed="false">Водна станція</button>
+      <button class="btn" id="bUndo">Знести останню</button>
+    </div>
+    <div class="build-info" id="buildInfo"></div>
+
     <h2>Події</h2>
     <div class="btns">
       <button class="btn" id="bMeteor">Метеорит</button>
@@ -89,7 +101,7 @@
         <div>Куполів<b id="mDomes">0</b></div>
       </div>
     </div>
-    <div class="hint">Клік по планеті - збудувати біокупол</div>
+    <div class="hint" id="hint">Клік по планеті - збудувати біокупол</div>
     <div id="toast"></div>
   </section>
 </main>
