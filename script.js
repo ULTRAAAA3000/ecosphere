@@ -25,6 +25,10 @@ var craters = [];
 var domes = [];
 var drops = [];
 var dust = [];
+var structures = [];
+var bonus = { atmo: 0, energy: 0, water: 0, temp: 0, bio: 0 };
+var tool = "dome";
+var MAX_STRUCTURES = 6;
 var puffs = [];
 var shuttles = [];
 var domeList = [];
@@ -244,9 +248,140 @@ function getSunAngle() {
   return time * 0.004 * (params.speed / 40) + 1;
 }
 
+function eff(name) {
+  return clamp(params[name] + bonus[name], 0, 100);
+}
+
+function countType(type) {
+  var n = 0;
+  for (var i = 0; i < structures.length; i++) {
+    if (structures[i].type == type) n = n + 1;
+  }
+  return n;
+}
+
+function updateBonus() {
+  var wind = countType("wind");
+  var solar = countType("solar");
+  var water = countType("water");
+  bonus.energy = Math.min(30, wind * 4 + solar * 6);
+  bonus.water = Math.min(36, water * 6);
+  bonus.atmo = Math.min(12, water * 2);
+  document.getElementById("buildInfo").textContent = "Вітряки " + wind + "/" + MAX_STRUCTURES + "  Ферми " + solar + "/" + MAX_STRUCTURES + "  Станції " + water + "/" + MAX_STRUCTURES + "\nБонус: енергія +" + bonus.energy + "%, вода +" + bonus.water + "%, кисень +" + bonus.atmo + "%";
+}
+
+function drawWind(size, number) {
+  ctx.fillStyle = "rgba(0,0,0,0.3)";
+  ctx.beginPath();
+  ctx.ellipse(size * 0.3, 0, size * 0.5, size * 0.15, 0, 0, PI2);
+  ctx.fill();
+  ctx.strokeStyle = "#dfe7f0";
+  ctx.lineWidth = size * 0.12;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(0, -size * 1.4);
+  ctx.stroke();
+  ctx.lineWidth = size * 0.1;
+  ctx.lineCap = "round";
+  for (var b = 0; b < 3; b++) {
+    var a = time * 0.06 + number + b * 2.094;
+    ctx.beginPath();
+    ctx.moveTo(0, -size * 1.4);
+    ctx.lineTo(Math.cos(a) * size * 0.9, -size * 1.4 + Math.sin(a) * size * 0.9);
+    ctx.stroke();
+  }
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.arc(0, -size * 1.4, size * 0.12, 0, PI2);
+  ctx.fill();
+}
+
+function drawSolar(size, number) {
+  ctx.fillStyle = "rgba(0,0,0,0.3)";
+  ctx.beginPath();
+  ctx.ellipse(size * 0.2, size * 0.05, size * 1.3, size * 0.15, 0, 0, PI2);
+  ctx.fill();
+  for (var q = -1; q <= 1; q++) {
+    var x = q * size * 0.75;
+    var grad = ctx.createLinearGradient(x, -size * 0.6, x, 0);
+    grad.addColorStop(0, "#60a5fa");
+    grad.addColorStop(1, "#1d4ed8");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(x - size * 0.32, 0);
+    ctx.lineTo(x + size * 0.32, 0);
+    ctx.lineTo(x + size * 0.4, -size * 0.6);
+    ctx.lineTo(x - size * 0.24, -size * 0.6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "rgba(200,225,255,0.6)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    var glint = 0.15 + 0.35 * Math.abs(Math.sin(time * 0.04 + q + number));
+    ctx.strokeStyle = "rgba(255,255,255," + glint + ")";
+    ctx.beginPath();
+    ctx.moveTo(x - size * 0.1, -size * 0.1);
+    ctx.lineTo(x + size * 0.2, -size * 0.5);
+    ctx.stroke();
+  }
+}
+
+function drawWaterStation(size, number) {
+  ctx.fillStyle = "rgba(0,0,0,0.3)";
+  ctx.beginPath();
+  ctx.ellipse(size * 0.2, size * 0.05, size * 0.7, size * 0.15, 0, 0, PI2);
+  ctx.fill();
+  ctx.fillStyle = "#cfe6f5";
+  ctx.fillRect(-size * 0.4, -size * 0.8, size * 0.8, size * 0.8);
+  ctx.beginPath();
+  ctx.ellipse(0, -size * 0.8, size * 0.4, size * 0.15, 0, 0, PI2);
+  ctx.fill();
+  ctx.fillStyle = "#2d7fd1";
+  ctx.fillRect(-size * 0.4, -size * 0.5, size * 0.8, size * 0.12);
+  ctx.strokeStyle = "#8fa3b8";
+  ctx.lineWidth = size * 0.1;
+  ctx.beginPath();
+  ctx.moveTo(size * 0.4, -size * 0.2);
+  ctx.lineTo(size * 0.9, -size * 0.2);
+  ctx.lineTo(size * 0.9, 0);
+  ctx.stroke();
+  var pulse = 0.3 + 0.4 * Math.abs(Math.sin(time * 0.05 + number));
+  drawGlow(0, -size * 0.8, size * 0.8, 90, 180, 255, pulse);
+  for (var d = 0; d < 3; d++) {
+    var dy = ((time * 0.4 + d * size * 0.3) % (size * 0.6));
+    ctx.fillStyle = "rgba(120,200,255,0.9)";
+    ctx.beginPath();
+    ctx.arc(size * 0.9, -size * 0.2 + dy * 0.3, size * 0.05, 0, PI2);
+    ctx.fill();
+  }
+}
+
+function drawStructures(p, offset) {
+  var width = p.r * 4;
+  for (var i = 0; i < structures.length; i++) {
+    var s = structures[i];
+    for (var k = 0; k < 2; k++) {
+      var x = p.x - p.r - offset + s.u * width + k * width;
+      var y = p.y - p.r + s.v * p.r * 2;
+      var dx = x - p.x;
+      var dy = y - p.y;
+      var d2 = (dx * dx + dy * dy) / (p.r * p.r);
+      if (d2 > 0.95) continue;
+      var scale = 0.35 + 0.65 * Math.sqrt(1 - d2);
+      var size = p.r * 0.09 * scale;
+      ctx.save();
+      ctx.translate(x, y);
+      if (s.type == "wind") drawWind(size, i);
+      if (s.type == "solar") drawSolar(size, i);
+      if (s.type == "water") drawWaterStation(size, i);
+      ctx.restore();
+    }
+  }
+}
+
 function targetGreen() {
   var tempGood = 1 - Math.abs(params.temp - 60) / 60;
-  var g = (params.atmo * 0.3 + params.energy * 0.2 + params.water * 0.2 + params.bio * 0.15 + tempGood * 100 * 0.15) / 100;
+  var g = (eff("atmo") * 0.3 + eff("energy") * 0.2 + eff("water") * 0.2 + params.bio * 0.15 + tempGood * 100 * 0.15) / 100;
   if (sw.nano) g = g + 0.06;
   if (sw.magnet) g = g + 0.05;
   g = g - storm * 0.12;
@@ -412,9 +547,9 @@ function drawPlanet(p) {
   drawLayer(greenTextures[0], p, offset, clamp(green * 3, 0, 1));
   drawLayer(greenTextures[1], p, offset, clamp(green * 3 - 1, 0, 1));
   drawLayer(greenTextures[2], p, offset, clamp(green * 3 - 2, 0, 1));
-  drawLayer(seaTextures[0], p, offset, clamp(params.water / 33, 0, 1));
-  drawLayer(seaTextures[1], p, offset, clamp((params.water - 33) / 33, 0, 1));
-  drawLayer(seaTextures[2], p, offset, clamp((params.water - 66) / 34, 0, 1));
+  drawLayer(seaTextures[0], p, offset, clamp(eff("water") / 33, 0, 1));
+  drawLayer(seaTextures[1], p, offset, clamp((eff("water") - 33) / 33, 0, 1));
+  drawLayer(seaTextures[2], p, offset, clamp((eff("water") - 66) / 34, 0, 1));
 
   for (var i = 0; i < craters.length; i++) {
     var c = craters[i];
@@ -427,7 +562,8 @@ function drawPlanet(p) {
     }
   }
 
-  drawLayer(cloudTexture, p, cloudOffset, 0.25 + params.water / 200);
+  drawStructures(p, offset);
+  drawLayer(cloudTexture, p, cloudOffset, 0.25 + eff("water") / 200);
 
   if (sw.rain) {
     ctx.strokeStyle = "rgba(150,210,255,0.5)";
@@ -745,7 +881,7 @@ function drawOneDome(x, y, angle, size, number, night) {
 }
 
 function drawDomes(p) {
-  var count = Math.round(params.energy / 100 * 7);
+  var count = Math.round(eff("energy") / 100 * 7);
   if (params.atmo > 10) count = count + 1;
   if (count > 8) count = 8;
 
@@ -947,8 +1083,8 @@ function updateHud(domeCount) {
   document.getElementById("rank").textContent = rankName;
   var temperature = Math.round(-63 + params.temp * 0.9 + green * 10);
   document.getElementById("mTemp").textContent = temperature + " °C";
-  document.getElementById("mO2").textContent = (params.atmo * 0.21).toFixed(1) + "%";
-  document.getElementById("mWater").textContent = params.water + "%";
+  document.getElementById("mO2").textContent = (eff("atmo") * 0.21).toFixed(1) + "%";
+  document.getElementById("mWater").textContent = eff("water") + "%";
   document.getElementById("mDomes").textContent = domeCount;
   document.getElementById("clock").textContent = "Сол " + (1 + Math.floor(time / 600));
   if (index >= 25) achievement("i25", "Перший росток");
@@ -1392,18 +1528,78 @@ canvas.onclick = function (e) {
   var p = getPlanet();
   var dx = e.clientX - box.left - p.x;
   var dy = e.clientY - box.top - p.y;
-  if (Math.sqrt(dx * dx + dy * dy) > p.r * 1.25) return;
-  if (domes.length >= 14) {
-    addLog("[WARN] Досягнуто ліміту куполів", "warn");
+  var dist = Math.sqrt(dx * dx + dy * dy);
+
+  if (tool == "dome") {
+    if (dist > p.r * 1.25) return;
+    if (domes.length >= 14) {
+      addLog("[WARN] Досягнуто ліміту куполів", "warn");
+      return;
+    }
+    var angle = clamp(Math.atan2(dy, dx) + Math.PI / 2, -1.45, 1.45);
+    domes.push({ angle: angle, grow: 0, auto: false, number: domes.length });
+    addLog("[OK] Збудовано новий біокупол вручну", "ok");
+    achievement("build", "Перший будівельник");
     return;
   }
-  var angle = clamp(Math.atan2(dy, dx) + Math.PI / 2, -1.45, 1.45);
-  domes.push({ angle: angle, grow: 0, auto: false, number: domes.length });
-  addLog("[OK] Збудовано новий біокупол вручну", "ok");
-  achievement("build", "Перший будівельник");
+
+  if (dist > p.r * 0.96) {
+    addLog("[WARN] Споруди можна будувати лише на поверхні планети", "warn");
+    return;
+  }
+  if (countType(tool) >= MAX_STRUCTURES) {
+    addLog("[WARN] Досягнуто ліміту: максимум " + MAX_STRUCTURES + " споруд цього типу", "warn");
+    return;
+  }
+  var width = p.r * 4;
+  var offset = (rotation * width) % width;
+  var u = ((dx + p.r + offset) % width) / width;
+  var v = (dy + p.r) / (p.r * 2);
+  structures.push({ type: tool, u: u, v: v });
+  updateBonus();
+  if (tool == "wind") addLog("[OK] Збудовано вітряк: енергомережа +4%", "ok");
+  if (tool == "solar") addLog("[OK] Збудовано сонячну ферму: енергомережа +6%", "ok");
+  if (tool == "water") addLog("[OK] Збудовано водну станцію: вода +6%, кисень +2%", "ok");
+  achievement("struct", "Перша споруда");
+  if (countType("wind") > 0 && countType("solar") > 0 && countType("water") > 0) {
+    achievement("engineer", "Інженер колонії");
+  }
+};
+
+var toolIds = { dome: "tDome", wind: "tWind", solar: "tSolar", water: "tWater" };
+var hints = {
+  dome: "Клік по планеті - збудувати біокупол",
+  wind: "Клік по поверхні планети - збудувати вітряк",
+  solar: "Клік по поверхні планети - збудувати сонячну ферму",
+  water: "Клік по поверхні планети - збудувати водну станцію"
+};
+
+function connectTool(name) {
+  document.getElementById(toolIds[name]).onclick = function () {
+    tool = name;
+    for (var key in toolIds) {
+      document.getElementById(toolIds[key]).setAttribute("aria-pressed", key == name);
+    }
+    document.getElementById("hint").textContent = hints[name];
+  };
+}
+
+for (var toolName in toolIds) {
+  connectTool(toolName);
+}
+
+document.getElementById("bUndo").onclick = function () {
+  if (structures.length == 0) {
+    addLog("[WARN] Немає споруд для знесення", "warn");
+    return;
+  }
+  structures.pop();
+  updateBonus();
+  addLog("[INFO] Останню споруду знесено", "info");
 };
 
 window.onresize = resize;
+updateBonus();
 
 resize();
 addLog("[INFO] Ініціалізація EcoSphere: Mars & Forest...", "info");

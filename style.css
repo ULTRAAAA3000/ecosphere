@@ -216,6 +216,19 @@ input[type=range]::-moz-range-thumb {
   box-shadow: 0 0 14px rgba(16, 185, 129, 0.4);
 }
 
+.tool[aria-pressed=true] {
+  border-color: var(--bio);
+  background: rgba(16, 185, 129, 0.2);
+  box-shadow: 0 0 14px rgba(16, 185, 129, 0.4);
+}
+
+.build-info {
+  font-size: 0.72rem;
+  color: var(--mute);
+  white-space: pre-line;
+  line-height: 1.5;
+}
+
 .pre {
   color: var(--mars2);
 }
