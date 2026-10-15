@@ -25,6 +25,17 @@ var craters = [];
 var domes = [];
 var drops = [];
 var dust = [];
+var puffs = [];
+var shuttles = [];
+var domeList = [];
+var comet = null;
+var flare = { t: 0, wave: 0, hit: true };
+var quake = 0;
+var blackout = 0;
+var auroraBoost = 0;
+for (var sh = 0; sh < 3; sh++) {
+  shuttles.push({ from: 0, to: 1, t: sh / 3, speed: 0.003 + sh * 0.0012, trail: [] });
+}
 
 var domeAngles = [-0.5, 0.22, -0.12, 0.62, -0.82, 0.9, 0.4, -0.32];
 for (var i = 0; i < domeAngles.length; i++) {
@@ -38,6 +49,7 @@ var randomLogs = [
   ["warn", "[WARN] Пилова буря в секторі 7: сонячні панелі на 80%"],
   ["info", "[INFO] Фотосинтез: рівень O2 зростає"],
   ["ok", "[OK] Перші мохи закріпилися на реголіті"],
+  ["info", "[INFO] Сигнал із Землі прийнято: затримка 12 хв"],
   ["info", "[INFO] Супутник зв'язку: затримка 12 хв, канал стабільний"]
 ];
 
@@ -330,18 +342,20 @@ function getSunPosition(p) {
 }
 
 function drawSun(sun) {
-  drawGlow(sun.x, sun.y, 220, 255, 150, 80, 0.2);
-  drawGlow(sun.x, sun.y, 90, 255, 200, 130, 0.5);
-  ctx.strokeStyle = "rgba(255,230,180,0.25)";
-  ctx.lineWidth = 2;
+  var f = 0;
+  if (flare.t > 0) f = flare.t;
+  drawGlow(sun.x, sun.y, 220 + 260 * f, 255, 150 + 60 * f, 80 + 60 * f, 0.2 + 0.4 * f);
+  drawGlow(sun.x, sun.y, 90 + 90 * f, 255, 200, 130, 0.5 + 0.3 * f);
+  ctx.strokeStyle = "rgba(255,230,180," + (0.25 + 0.4 * f) + ")";
+  ctx.lineWidth = 2 + 3 * f;
   for (var i = 0; i < 12; i++) {
     var a = i * (PI2 / 12) + time * 0.002;
     ctx.beginPath();
     ctx.moveTo(sun.x + Math.cos(a) * 30, sun.y + Math.sin(a) * 30);
-    ctx.lineTo(sun.x + Math.cos(a) * 110, sun.y + Math.sin(a) * 110);
+    ctx.lineTo(sun.x + Math.cos(a) * (110 + 160 * f), sun.y + Math.sin(a) * (110 + 160 * f));
     ctx.stroke();
   }
-  drawGlow(sun.x, sun.y, 28, 255, 255, 240, 1);
+  drawGlow(sun.x, sun.y, 28 + 20 * f, 255, 255, 240, 1);
 }
 
 function drawMoon(p, front) {
@@ -530,12 +544,12 @@ function drawAurora(p) {
     var inner = [];
     for (var i = 0; i <= 60; i++) {
       var a = base + (i / 60 - 0.5) * 1.5;
-      var h = p.r * (0.06 + 0.16 * Math.abs(Math.sin(i * 0.35 + time * 0.03)) * (0.6 + 0.4 * Math.sin(i * 0.15 - time * 0.02)));
+      var h = (1 + auroraBoost * 0.8) * p.r * (0.06 + 0.16 * Math.abs(Math.sin(i * 0.35 + time * 0.03)) * (0.6 + 0.4 * Math.sin(i * 0.15 - time * 0.02)));
       outer.push({ x: p.x + Math.cos(a) * (p.r + h), y: p.y + Math.sin(a) * (p.r + h), a: a });
       inner.push({ x: p.x + Math.cos(a) * p.r * 0.995, y: p.y + Math.sin(a) * p.r * 0.995 });
     }
     var grad = ctx.createRadialGradient(p.x, p.y, p.r, p.x, p.y, p.r * 1.25);
-    grad.addColorStop(0, "rgba(80,255,170,0.75)");
+    grad.addColorStop(0, rgba(80, 255, 170, Math.min(1, 0.75 + auroraBoost * 0.25)));
     grad.addColorStop(0.5, "rgba(60,200,220,0.35)");
     grad.addColorStop(1, "rgba(170,90,255,0)");
     ctx.fillStyle = grad;
@@ -668,6 +682,27 @@ function drawOneDome(x, y, angle, size, number, night) {
     ctx.fill();
   }
 
+  for (var q = 0; q < 5; q++) {
+    var fx = Math.sin(time * 0.01 * (q + 1) + number * 3 + q) * s * 0.7;
+    var fy = -s * (0.3 + 0.25 * Math.sin(time * 0.013 * (q + 2) + q));
+    var fa = 0.4 + 0.6 * Math.abs(Math.sin(time * 0.05 + q));
+    drawGlow(fx, fy, 5, 255, 240, 120, fa * (0.3 + night * 0.7));
+  }
+
+  if (params.bio > 30) {
+    var bx = ((time * 0.6 + number * 40) % (s * 2.6)) - s * 1.3;
+    var by = -s * 0.7 + Math.sin(time * 0.08) * s * 0.05;
+    var wing = Math.sin(time * 0.3) * s * 0.05;
+    var bs = s * 0.06;
+    ctx.strokeStyle = "#16302a";
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(bx - bs * 2, by + wing);
+    ctx.lineTo(bx, by);
+    ctx.lineTo(bx + bs * 2, by + wing);
+    ctx.stroke();
+  }
+
   if (night > 0.3) {
     ctx.fillStyle = "rgba(255,230,150," + night + ")";
     for (var q = 0; q < 4; q++) {
@@ -692,6 +727,14 @@ function drawOneDome(x, y, angle, size, number, night) {
   ctx.beginPath();
   ctx.ellipse(0, 0, s, s * 0.5, 0, Math.PI, 0);
   ctx.stroke();
+
+  if (blackout > 0) {
+    ctx.fillStyle = "rgba(0,0,10," + blackout * (0.35 + 0.3 * Math.random()) + ")";
+    ctx.beginPath();
+    ctx.arc(0, 0, s, Math.PI, 0);
+    ctx.closePath();
+    ctx.fill();
+  }
 
   ctx.strokeStyle = "rgba(255,255,255,0.6)";
   ctx.lineWidth = 2;
@@ -731,6 +774,7 @@ function drawDomes(p) {
   ctx.lineDashOffset = -time * (0.5 + params.energy / 40);
   ctx.strokeStyle = "rgba(150,255,255,0.9)";
   for (var k = 0; k < list.length - 1; k++) {
+    if (blackout > 0.2 && Math.random() < blackout * 0.7) continue;
     var a = list[k];
     var b = list[k + 1];
     var mx = (a.x + b.x) / 2 + ((a.x + b.x) / 2 - p.x) * 0.06;
@@ -744,8 +788,11 @@ function drawDomes(p) {
 
   for (var n = 0; n < list.length; n++) {
     var dm = list[n];
-    drawOneDome(dm.x, dm.y, dm.angle, dm.size, dm.number, dm.night);
+    var shakeX = rand(-1, 1) * quake * 3;
+    var shakeY = rand(-1, 1) * quake * 3;
+    drawOneDome(dm.x + shakeX, dm.y + shakeY, dm.angle, dm.size, dm.number, dm.night);
   }
+  domeList = list;
   return list.length;
 }
 
@@ -912,21 +959,293 @@ function updateHud(domeCount) {
 
 var domeCountShown = 0;
 
+function startFlare() {
+  if (flare.t > 0) return;
+  flare.t = 1;
+  flare.wave = 0;
+  flare.hit = false;
+  addLog("[WARN] Сонячний спалах! Викид плазми прямує до планети", "warn");
+}
+
+function drawFlare(p, sun) {
+  if (flare.t <= 0) return;
+  flare.t = flare.t - 0.003;
+  flare.wave = flare.wave + 7;
+  var dx = p.x - sun.x;
+  var dy = p.y - sun.y;
+  var dist = Math.sqrt(dx * dx + dy * dy);
+  var direction = Math.atan2(dy, dx);
+
+  if (flare.wave < dist + p.r) {
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (var i = 0; i < 3; i++) {
+      var radius = flare.wave - i * 14;
+      if (radius <= 0) continue;
+      ctx.strokeStyle = rgba(255, 190 - i * 30, 90, 0.55 - i * 0.15);
+      ctx.lineWidth = 9 - i * 2.5;
+      ctx.beginPath();
+      ctx.arc(sun.x, sun.y, radius, direction - 0.6, direction + 0.6);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  if (!flare.hit && flare.wave >= dist - p.r) {
+    flare.hit = true;
+    flash = 0.6;
+    if (sw.magnet) {
+      auroraBoost = 1;
+      addLog("[OK] Магнітне поле відбило викид плазми, сяйво посилилось", "ok");
+      achievement("shield", "Магнітний щит");
+    } else {
+      blackout = 1;
+      green = Math.max(0, green - 0.04);
+      addLog("[WARN] Викид плазми! Енергомережу вимкнено, купола на резервному живленні", "warn");
+      achievement("flare", "Пережив спалах");
+    }
+  }
+}
+
+function startQuake() {
+  if (quake > 0) return;
+  quake = 1;
+  var magnitude = (4 + Math.random() * 2.5).toFixed(1);
+  green = Math.max(0, green - 0.03);
+  for (var i = 0; i < domeList.length; i++) {
+    for (var k = 0; k < 6; k++) {
+      puffs.push({ x: domeList[i].x + rand(-12, 12), y: domeList[i].y, vx: rand(-0.6, 0.6), vy: rand(-1.2, -0.3), life: rand(50, 90), size: rand(3, 8) });
+    }
+  }
+  addLog("[WARN] Землетрус магнітудою " + magnitude + "! Купола витримали", "warn");
+  achievement("quake", "Тверда земля");
+}
+
+function drawQuakePuffs() {
+  for (var i = puffs.length - 1; i >= 0; i--) {
+    var q = puffs[i];
+    q.x = q.x + q.vx;
+    q.y = q.y + q.vy;
+    q.size = q.size + 0.08;
+    q.life = q.life - 1;
+    ctx.fillStyle = "rgba(150,110,80," + Math.max(0, q.life / 150) + ")";
+    ctx.beginPath();
+    ctx.arc(q.x, q.y, q.size, 0, PI2);
+    ctx.fill();
+    if (q.life <= 0) puffs.splice(i, 1);
+  }
+}
+
+function spawnComet() {
+  if (comet != null) return;
+  comet = { x: -120, y: rand(H * 0.1, H * 0.3), vx: rand(2.2, 3), vy: rand(0.2, 0.6) };
+  addLog("[INFO] Виявлено комету! Курс повз планету", "info");
+  achievement("comet", "Небесний гість");
+}
+
+function drawComet(sun) {
+  if (comet == null) return;
+  comet.x = comet.x + comet.vx;
+  comet.y = comet.y + comet.vy;
+  var tx = comet.x - sun.x;
+  var ty = comet.y - sun.y;
+  var len = Math.sqrt(tx * tx + ty * ty);
+  tx = tx / len;
+  ty = ty / len;
+  var px = -ty;
+  var py = tx;
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.lineCap = "round";
+
+  var ion = ctx.createLinearGradient(comet.x, comet.y, comet.x + tx * 300, comet.y + ty * 300);
+  ion.addColorStop(0, "rgba(120,200,255,0.7)");
+  ion.addColorStop(1, "rgba(120,200,255,0)");
+  ctx.strokeStyle = ion;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(comet.x, comet.y);
+  ctx.lineTo(comet.x + tx * 300, comet.y + ty * 300);
+  ctx.stroke();
+
+  var dust = ctx.createLinearGradient(comet.x, comet.y, comet.x + tx * 220 + px * 80, comet.y + ty * 220 + py * 80);
+  dust.addColorStop(0, "rgba(255,220,160,0.5)");
+  dust.addColorStop(1, "rgba(255,200,120,0)");
+  ctx.strokeStyle = dust;
+  ctx.lineWidth = 16;
+  ctx.beginPath();
+  ctx.moveTo(comet.x, comet.y);
+  ctx.quadraticCurveTo(comet.x + tx * 110 + px * 15, comet.y + ty * 110 + py * 15, comet.x + tx * 220 + px * 80, comet.y + ty * 220 + py * 80);
+  ctx.stroke();
+
+  for (var i = 0; i < 12; i++) {
+    var f = Math.random();
+    ctx.fillStyle = "rgba(255,235,200," + (1 - f) * 0.8 + ")";
+    ctx.fillRect(comet.x + tx * f * 220 + px * f * f * 80 + rand(-6, 6), comet.y + ty * f * 220 + py * f * f * 80 + rand(-6, 6), 1.5, 1.5);
+  }
+
+  drawGlow(comet.x, comet.y, 34, 190, 225, 255, 0.8);
+  drawGlow(comet.x, comet.y, 10, 255, 255, 255, 1);
+  ctx.restore();
+
+  if (comet.x > W + 350 || comet.y > H + 100) comet = null;
+}
+
+function drawEarth(sun) {
+  var r = Math.min(W, H) * 0.045;
+  var x = W * 0.11 + Math.sin(time * 0.002) * 6;
+  var y = H * 0.74 + Math.cos(time * 0.0017) * 5;
+  drawGlow(x, y, r * 2.2, 90, 160, 255, 0.35);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, PI2);
+  ctx.clip();
+  var ocean = ctx.createLinearGradient(x, y - r, x, y + r);
+  ocean.addColorStop(0, "#2d7fd1");
+  ocean.addColorStop(1, "#123a7a");
+  ctx.fillStyle = ocean;
+  ctx.fillRect(x - r, y - r, r * 2, r * 2);
+
+  for (var k = 0; k < 5; k++) {
+    var a = k * 1.3 + time * 0.003;
+    var c = Math.cos(a);
+    if (c < -0.2) continue;
+    ctx.fillStyle = k % 2 == 0 ? "#3f9b4f" : "#9a8a4a";
+    ctx.beginPath();
+    ctx.ellipse(x + Math.sin(a) * r * 0.8, y + ((k % 3) - 1) * r * 0.45, r * (0.18 + 0.2 * Math.max(0, c)), r * 0.3, 0, 0, PI2);
+    ctx.fill();
+  }
+
+  ctx.fillStyle = "rgba(255,255,255,0.85)";
+  ctx.beginPath();
+  ctx.ellipse(x, y - r, r * 0.6, r * 0.2, 0, 0, PI2);
+  ctx.fill();
+
+  ctx.fillStyle = "rgba(255,255,255,0.45)";
+  for (var c2 = 0; c2 < 4; c2++) {
+    var ca = c2 * 1.7 + time * 0.005;
+    if (Math.cos(ca) < -0.1) continue;
+    ctx.beginPath();
+    ctx.ellipse(x + Math.sin(ca) * r * 0.7, y + (c2 - 1.5) * r * 0.35, r * 0.3, r * 0.08, 0, 0, PI2);
+    ctx.fill();
+  }
+
+  var lx = sun.x - x;
+  var ly = sun.y - y;
+  var ll = Math.sqrt(lx * lx + ly * ly);
+  var shade = ctx.createRadialGradient(x + lx / ll * r * 0.5, y + ly / ll * r * 0.5, r * 0.2, x, y, r * 1.15);
+  shade.addColorStop(0, "rgba(0,0,0,0)");
+  shade.addColorStop(1, "rgba(2,4,14,0.85)");
+  ctx.fillStyle = shade;
+  ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  ctx.restore();
+
+  ctx.strokeStyle = "rgba(140,200,255,0.5)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, PI2);
+  ctx.stroke();
+
+  ctx.fillStyle = "rgba(200,225,255,0.8)";
+  ctx.font = "12px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText("Земля", x, y + r + 18);
+}
+
+function drawShuttles(p) {
+  if (domeList.length < 2) return;
+  for (var i = 0; i < shuttles.length; i++) {
+    var s = shuttles[i];
+    if (s.from >= domeList.length || s.to >= domeList.length || s.from == s.to) {
+      s.from = 0;
+      s.to = 1;
+      s.t = 0;
+    }
+    s.t = s.t + s.speed;
+    if (s.t >= 1) {
+      s.from = s.to;
+      s.to = Math.floor(Math.random() * domeList.length);
+      if (s.to == s.from) s.to = (s.from + 1) % domeList.length;
+      s.t = 0;
+      s.speed = rand(0.003, 0.007);
+    }
+    var a = domeList[s.from];
+    var b = domeList[s.to];
+    var mx = (a.x + b.x) / 2;
+    var my = (a.y + b.y) / 2;
+    var dx = mx - p.x;
+    var dy = my - p.y;
+    var len = Math.sqrt(dx * dx + dy * dy);
+    var lift = p.r * 0.3 + Math.abs(a.x - b.x) * 0.2;
+    var cx = mx + dx / len * lift;
+    var cy = my + dy / len * lift;
+    var t = s.t;
+    var x = (1 - t) * (1 - t) * a.x + 2 * (1 - t) * t * cx + t * t * b.x;
+    var y = (1 - t) * (1 - t) * a.y + 2 * (1 - t) * t * cy + t * t * b.y;
+    var vx = 2 * (1 - t) * (cx - a.x) + 2 * t * (b.x - cx);
+    var vy = 2 * (1 - t) * (cy - a.y) + 2 * t * (b.y - cy);
+    var angle = Math.atan2(vy, vx);
+
+    s.trail.push({ x: x, y: y });
+    if (s.trail.length > 16) s.trail.shift();
+    for (var k = 1; k < s.trail.length; k++) {
+      ctx.strokeStyle = "rgba(255,190,120," + (k / s.trail.length) * 0.6 + ")";
+      ctx.lineWidth = 1 + k * 0.12;
+      ctx.beginPath();
+      ctx.moveTo(s.trail[k - 1].x, s.trail[k - 1].y);
+      ctx.lineTo(s.trail[k].x, s.trail[k].y);
+      ctx.stroke();
+    }
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    drawGlow(-5, 0, 9, 255, 160, 80, 0.7);
+    ctx.fillStyle = "#dfe7f0";
+    ctx.beginPath();
+    ctx.moveTo(7, 0);
+    ctx.lineTo(-5, -3.5);
+    ctx.lineTo(-3, 0);
+    ctx.lineTo(-5, 3.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#7cc4f5";
+    ctx.fillRect(1, -1, 3, 2);
+    ctx.restore();
+  }
+}
+
 function draw() {
   var p = getPlanet();
   var sun = getSunPosition(p);
   ctx.clearRect(0, 0, W, H);
+  ctx.save();
+  if (quake > 0) {
+    ctx.translate(rand(-1, 1) * quake * 6, rand(-1, 1) * quake * 6);
+    quake = quake - 0.012;
+    if (quake < 0) quake = 0;
+  }
+  if (blackout > 0) blackout = blackout - 0.003;
+  if (auroraBoost > 0) auroraBoost = auroraBoost - 0.004;
   drawBackground();
+  drawEarth(sun);
   drawSun(sun);
   drawMoon(p, false);
+  drawComet(sun);
   drawMagnetField(p, sun);
   drawPlanet(p);
   drawAurora(p);
   domeCountShown = drawDomes(p);
+  drawShuttles(p);
   drawMoon(p, true);
   drawBots(p);
   drawMeteors(p);
+  drawFlare(p, sun);
+  drawQuakePuffs();
   drawStorm();
+  ctx.restore();
 }
 
 function loop() {
@@ -938,6 +1257,7 @@ function loop() {
   rotation = rotation + 0.0018 * (0.3 + params.speed / 50);
   green = green + (targetGreen() - green) * 0.03;
   if (Math.random() < 0.0006) spawnMeteor();
+  if (Math.random() < 0.0002) spawnComet();
   draw();
   if (Math.floor(time) % 8 == 0) updateHud(domeCountShown);
   requestAnimationFrame(loop);
@@ -1031,6 +1351,9 @@ for (var t = 0; t < swNames.length; t++) {
 }
 
 document.getElementById("bMeteor").onclick = spawnMeteor;
+document.getElementById("bFlare").onclick = startFlare;
+document.getElementById("bComet").onclick = spawnComet;
+document.getElementById("bQuake").onclick = startQuake;
 
 document.getElementById("bStorm").onclick = function () {
   storm = 1;
