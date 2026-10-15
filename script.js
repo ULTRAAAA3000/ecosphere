@@ -84,37 +84,131 @@ function achievement(key, text) {
   addLog("[OK] Досягнення: " + text, "ok");
 }
 
-function makeTexture(count, minR, maxR, colors, alpha, background) {
-  var c = document.createElement("canvas");
-  c.width = 512;
-  c.height = 256;
-  var t = c.getContext("2d");
-  if (background) {
-    t.fillStyle = background;
-    t.fillRect(0, 0, 512, 256);
-  }
-  for (var i = 0; i < count; i++) {
-    var x = rand(0, 512);
-    var y = rand(0, 256);
-    var r = rand(minR, maxR);
-    t.fillStyle = colors[Math.floor(Math.random() * colors.length)];
-    for (var layer = 0; layer < 3; layer++) {
-      t.globalAlpha = alpha * 0.4;
-      for (var shift = -512; shift <= 512; shift += 512) {
-        t.beginPath();
-        t.arc(x + shift, y, r * (1 - layer * 0.25), 0, PI2);
-        t.fill();
+var TEX_W = 512;
+var TEX_H = 256;
+var noiseSizes = [8, 16, 32, 64, 128];
+var noiseAlpha = [1, 0.35, 0.2, 0.12, 0.07];
+
+function makeNoise() {
+  var out = document.createElement("canvas");
+  out.width = TEX_W;
+  out.height = TEX_H;
+  var t = out.getContext("2d");
+  t.fillStyle = "#808080";
+  t.fillRect(0, 0, TEX_W, TEX_H);
+  for (var i = 0; i < noiseSizes.length; i++) {
+    var n = noiseSizes[i];
+    var rows = n / 2;
+    var small = document.createElement("canvas");
+    small.width = n + 1;
+    small.height = rows + 1;
+    var sc = small.getContext("2d");
+    var firstColumn = [];
+    for (var x = 0; x <= n; x++) {
+      for (var y = 0; y <= rows; y++) {
+        var v = Math.random();
+        if (x == 0) firstColumn[y] = v;
+        if (x == n) v = firstColumn[y];
+        var gray = Math.floor(v * 255);
+        sc.fillStyle = "rgb(" + gray + "," + gray + "," + gray + ")";
+        sc.fillRect(x, y, 1, 1);
       }
     }
+    var scaleX = TEX_W / n;
+    var scaleY = TEX_H / rows;
+    t.globalAlpha = noiseAlpha[i];
+    t.drawImage(small, -scaleX / 2, -scaleY / 2, (n + 1) * scaleX, (rows + 1) * scaleY);
   }
+  t.globalAlpha = 1;
+  return out;
+}
+
+function readHeights(canvas) {
+  var data = canvas.getContext("2d").getImageData(0, 0, TEX_W, TEX_H).data;
+  var list = [];
+  var min = 255;
+  var max = 0;
+  for (var i = 0; i < TEX_W * TEX_H; i++) {
+    var v = data[i * 4];
+    list.push(v);
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  for (var j = 0; j < list.length; j++) {
+    list[j] = (list[j] - min) / (max - min);
+  }
+  return list;
+}
+
+function buildTexture(colorFunction) {
+  var c = document.createElement("canvas");
+  c.width = TEX_W;
+  c.height = TEX_H;
+  var t = c.getContext("2d");
+  var img = t.createImageData(TEX_W, TEX_H);
+  for (var y = 0; y < TEX_H; y++) {
+    for (var x = 0; x < TEX_W; x++) {
+      var i = y * TEX_W + x;
+      var color = colorFunction(i, x, y);
+      img.data[i * 4] = color[0];
+      img.data[i * 4 + 1] = color[1];
+      img.data[i * 4 + 2] = color[2];
+      img.data[i * 4 + 3] = color[3];
+    }
+  }
+  t.putImageData(img, 0, 0);
   return c;
 }
 
-var landTexture = makeTexture(300, 5, 24, ["#6b2c1b", "#c98053", "#8a3d24", "#b5683f"], 0.6, "#9a4a2b");
-var greenTexture1 = makeTexture(110, 10, 30, ["#2fb86a", "#45cf7f"], 0.9, null);
-var greenTexture2 = makeTexture(260, 12, 34, ["#25a05c", "#3cc878", "#2fb86a"], 0.95, null);
-var seaTexture = makeTexture(40, 25, 55, ["#2d7fd1", "#1f5fa8"], 0.95, null);
-var cloudTexture = makeTexture(45, 6, 16, ["#ffffff"], 0.5, null);
+var heights = readHeights(makeNoise());
+var plants = readHeights(makeNoise());
+var cloudsMap = readHeights(makeNoise());
+
+var landTexture = buildTexture(function (i, x, y) {
+  var h = heights[i];
+  var left = heights[y * TEX_W + (x + TEX_W - 9) % TEX_W];
+  var light = 1 + (h - left) * 1.6;
+  var r = 0;
+  var g = 0;
+  var b = 0;
+  if (h < 0.5) {
+    r = mix(95, 176, h * 2);
+    g = mix(40, 86, h * 2);
+    b = mix(26, 50, h * 2);
+  } else {
+    r = mix(176, 218, (h - 0.5) * 2);
+    g = mix(86, 150, (h - 0.5) * 2);
+    b = mix(50, 100, (h - 0.5) * 2);
+  }
+  return [clamp(r * light, 0, 255), clamp(g * light, 0, 255), clamp(b * light, 0, 255), 255];
+});
+
+function makeSea(level) {
+  return buildTexture(function (i) {
+    var h = heights[i];
+    var depth = clamp((level - h) / level, 0, 1);
+    var alpha = clamp((level - h) * 40, 0, 1) * 255;
+    return [mix(55, 8, depth), mix(135, 38, depth), mix(185, 100, depth), alpha];
+  });
+}
+
+function makeGreen(level) {
+  return buildTexture(function (i) {
+    var v = plants[i];
+    var alpha = clamp((v - level) * 30, 0, 1) * 255;
+    var k = clamp((v - level) * 2, 0, 1);
+    var light = 0.75 + (heights[i] - 0.5) * 0.6;
+    return [mix(18, 70, k) * light, mix(105, 195, k) * light, mix(58, 95, k) * light, alpha];
+  });
+}
+
+var seaTextures = [makeSea(0.36), makeSea(0.45), makeSea(0.54)];
+var greenTextures = [makeGreen(0.62), makeGreen(0.5), makeGreen(0.38)];
+
+var cloudTexture = buildTexture(function (i) {
+  var alpha = clamp((cloudsMap[i] - 0.5) * 3, 0, 1) * 220;
+  return [255, 255, 255, alpha];
+});
 
 function resize() {
   var box = canvas.getBoundingClientRect();
@@ -122,9 +216,10 @@ function resize() {
   canvas.height = box.height;
   W = canvas.width;
   H = canvas.height;
+  nebula = null;
   stars = [];
   for (var i = 0; i < 160; i++) {
-    stars.push({ x: rand(0, W), y: rand(0, H), size: rand(0.4, 1.6), phase: rand(0, 6) });
+    stars.push({ x: rand(0, W), y: rand(0, H), size: rand(0.4, 1.7), phase: rand(0, 6), color: starColors[Math.floor(Math.random() * starColors.length)] });
   }
 }
 
@@ -146,28 +241,76 @@ function targetGreen() {
   return clamp(g, 0, 1);
 }
 
+var nebula = null;
+var shooters = [];
+var starColors = ["255,255,255", "200,225,255", "255,230,200", "255,210,210"];
+
+function makeNebula() {
+  nebula = document.createElement("canvas");
+  nebula.width = W;
+  nebula.height = H;
+  var t = nebula.getContext("2d");
+  var colors = [[150, 50, 170], [40, 120, 210], [210, 70, 130], [30, 170, 150]];
+  t.globalCompositeOperation = "lighter";
+  for (var i = 0; i < 50; i++) {
+    var f = i / 49;
+    var x = W * (-0.1 + 1.2 * f) + rand(-W * 0.08, W * 0.08);
+    var y = H * (0.8 - 0.65 * f) + rand(-H * 0.15, H * 0.15);
+    var r = rand(W * 0.1, W * 0.26);
+    var c = colors[Math.floor(Math.random() * colors.length)];
+    var grad = t.createRadialGradient(x, y, 0, x, y, r);
+    grad.addColorStop(0, rgba(c[0], c[1], c[2], rand(0.05, 0.11)));
+    grad.addColorStop(1, rgba(c[0], c[1], c[2], 0));
+    t.fillStyle = grad;
+    t.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  for (var j = 0; j < 1400; j++) {
+    var sx = rand(0, W);
+    var spread = (Math.random() + Math.random() + Math.random()) / 3 - 0.5;
+    var sy = H * (0.8 - 0.65 * sx / W) + spread * H * 0.7;
+    t.fillStyle = "rgba(220,230,255," + rand(0.15, 0.6) + ")";
+    t.fillRect(sx, sy, 1, 1);
+  }
+}
+
 function drawStars() {
   for (var i = 0; i < stars.length; i++) {
     var s = stars[i];
     var alpha = 0.4 + 0.6 * Math.abs(Math.sin(time * 0.02 + s.phase));
-    ctx.fillStyle = "rgba(255,255,255," + alpha + ")";
+    var x = (s.x + time * 0.03 * s.size) % W;
+    ctx.fillStyle = "rgba(" + s.color + "," + alpha + ")";
     ctx.beginPath();
-    ctx.arc(s.x, s.y, s.size, 0, PI2);
+    ctx.arc(x, s.y, s.size, 0, PI2);
     ctx.fill();
+    if (s.size > 1.4) {
+      ctx.fillRect(x - s.size * 4, s.y - 0.4, s.size * 8, 0.8);
+      ctx.fillRect(x - 0.4, s.y - s.size * 4, 0.8, s.size * 8);
+    }
+  }
+  if (Math.random() < 0.004) {
+    shooters.push({ x: rand(0, W * 0.8), y: rand(0, H * 0.4), life: 0 });
+  }
+  for (var k = shooters.length - 1; k >= 0; k--) {
+    var sh = shooters[k];
+    sh.life = sh.life + 1;
+    sh.x = sh.x + 14;
+    sh.y = sh.y + 6;
+    var grad = ctx.createLinearGradient(sh.x, sh.y, sh.x - 80, sh.y - 34);
+    grad.addColorStop(0, "rgba(255,255,255,0.9)");
+    grad.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(sh.x, sh.y);
+    ctx.lineTo(sh.x - 80, sh.y - 34);
+    ctx.stroke();
+    if (sh.life > 30) shooters.splice(k, 1);
   }
 }
 
 function drawBackground() {
-  var g1 = ctx.createRadialGradient(W * 0.25, H * 0.25, 0, W * 0.25, H * 0.25, W * 0.5);
-  g1.addColorStop(0, "rgba(120,40,110,0.3)");
-  g1.addColorStop(1, "rgba(0,0,0,0)");
-  ctx.fillStyle = g1;
-  ctx.fillRect(0, 0, W, H);
-  var g2 = ctx.createRadialGradient(W * 0.85, H * 0.8, 0, W * 0.85, H * 0.8, W * 0.45);
-  g2.addColorStop(0, "rgba(16,130,110,0.25)");
-  g2.addColorStop(1, "rgba(0,0,0,0)");
-  ctx.fillStyle = g2;
-  ctx.fillRect(0, 0, W, H);
+  if (nebula == null) makeNebula();
+  ctx.drawImage(nebula, 0, 0);
   drawStars();
 }
 
@@ -252,9 +395,12 @@ function drawPlanet(p) {
   ctx.clip();
 
   drawLayer(landTexture, p, offset, 1);
-  drawLayer(seaTexture, p, offset, params.water / 100);
-  drawLayer(greenTexture1, p, offset, clamp(green * 2, 0, 1));
-  drawLayer(greenTexture2, p, offset, clamp(green * 2 - 1, 0, 1));
+  drawLayer(greenTextures[0], p, offset, clamp(green * 3, 0, 1));
+  drawLayer(greenTextures[1], p, offset, clamp(green * 3 - 1, 0, 1));
+  drawLayer(greenTextures[2], p, offset, clamp(green * 3 - 2, 0, 1));
+  drawLayer(seaTextures[0], p, offset, clamp(params.water / 33, 0, 1));
+  drawLayer(seaTextures[1], p, offset, clamp((params.water - 33) / 33, 0, 1));
+  drawLayer(seaTextures[2], p, offset, clamp((params.water - 66) / 34, 0, 1));
 
   for (var i = 0; i < craters.length; i++) {
     var c = craters[i];
@@ -267,16 +413,7 @@ function drawPlanet(p) {
     }
   }
 
-  var cap = p.r * (0.14 - params.temp / 1000);
-  ctx.fillStyle = "rgba(235,243,252,0.9)";
-  ctx.beginPath();
-  ctx.ellipse(p.x, p.y - p.r, p.r * 0.8, cap, 0, 0, PI2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(p.x, p.y + p.r, p.r * 0.7, cap * 0.8, 0, 0, PI2);
-  ctx.fill();
-
-  drawLayer(cloudTexture, p, cloudOffset, 0.1 + params.water / 300);
+  drawLayer(cloudTexture, p, cloudOffset, 0.25 + params.water / 200);
 
   if (sw.rain) {
     ctx.strokeStyle = "rgba(150,210,255,0.5)";
@@ -300,47 +437,170 @@ function drawPlanet(p) {
 
   var angle = getSunAngle();
   var lx = Math.cos(angle) * 0.6;
-  var shade = ctx.createRadialGradient(p.x + lx * p.r, p.y - p.r * 0.3, p.r * 0.3, p.x, p.y, p.r * 1.25);
+  var shade = ctx.createRadialGradient(p.x + lx * p.r, p.y - p.r * 0.3, p.r * 0.1, p.x, p.y, p.r * 1.2);
   shade.addColorStop(0, "rgba(0,0,0,0)");
-  shade.addColorStop(0.7, "rgba(4,6,16,0.18)");
-  shade.addColorStop(1, "rgba(2,3,10,0.75)");
+  shade.addColorStop(0.5, "rgba(4,6,16,0.2)");
+  shade.addColorStop(0.85, "rgba(3,4,12,0.6)");
+  shade.addColorStop(1, "rgba(2,3,10,0.92)");
   ctx.fillStyle = shade;
+  ctx.fillRect(p.x - p.r, p.y - p.r, p.r * 2, p.r * 2);
+  var limb = ctx.createRadialGradient(p.x, p.y, p.r * 0.6, p.x, p.y, p.r);
+  limb.addColorStop(0, "rgba(0,0,0,0)");
+  limb.addColorStop(1, "rgba(0,10,20,0.55)");
+  ctx.fillStyle = limb;
   ctx.fillRect(p.x - p.r, p.y - p.r, p.r * 2, p.r * 2);
   ctx.restore();
 }
 
-function drawMagnetField(p) {
+function drawMagnetField(p, sun) {
   if (!sw.magnet) return;
-  ctx.lineWidth = 1.5;
-  ctx.setLineDash([4, 18]);
-  for (var i = 0; i < 4; i++) {
-    ctx.lineDashOffset = -time * (1 + i * 0.4);
-    ctx.strokeStyle = "rgba(160,255,230,0.7)";
+  var sunAngle = Math.atan2(sun.y - p.y, sun.x - p.x);
+  var sunSide = Math.cos(sunAngle);
+  var shells = [1.5, 1.9, 2.4, 3.0];
+  var colors = [[120, 255, 220], [100, 220, 255], [130, 170, 255], [180, 140, 255]];
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.lineCap = "round";
+
+  for (var i = 0; i < shells.length; i++) {
+    var L = shells[i];
+    var c = colors[i];
+    var start = Math.asin(Math.sqrt(1 / L)) + 0.02;
+    for (var side = -1; side <= 1; side += 2) {
+      var stretch = 1 - 0.3 * side * sunSide;
+      var points = [];
+      for (var th = start; th < Math.PI - start; th += 0.05) {
+        var r = L * Math.sin(th) * Math.sin(th) * p.r;
+        points.push({ x: p.x + side * stretch * r * Math.sin(th), y: p.y - r * Math.cos(th) });
+      }
+
+      ctx.strokeStyle = rgba(c[0], c[1], c[2], 0.07);
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      for (var a = 0; a < points.length; a++) {
+        if (a == 0) ctx.moveTo(points[a].x, points[a].y);
+        else ctx.lineTo(points[a].x, points[a].y);
+      }
+      ctx.stroke();
+
+      ctx.strokeStyle = rgba(c[0], c[1], c[2], 0.35);
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+
+      for (var q = 0; q < 4; q++) {
+        var f = (time * 0.003 * (1 + i * 0.15) + q / 4 + i * 0.13) % 1;
+        if (side == 1) f = 1 - f;
+        var index = Math.floor(f * (points.length - 1));
+        for (var tail = 0; tail < 6; tail++) {
+          var ti = index - tail * (side == 1 ? -1 : 1);
+          if (ti < 0 || ti >= points.length) continue;
+          drawGlow(points[ti].x, points[ti].y, 5 - tail * 0.6, c[0], c[1], c[2], 0.7 - tail * 0.1);
+        }
+      }
+    }
+  }
+
+  for (var k = 0; k < 3; k++) {
+    var phase = (time * 0.004 + k / 3) % 1;
+    var radius = p.r * (3.3 - phase * 1.9);
+    var alpha = Math.sin(phase * Math.PI) * 0.5;
+    ctx.strokeStyle = rgba(150, 210, 255, alpha);
+    ctx.lineWidth = 2 + (1 - phase) * 2;
     ctx.beginPath();
-    ctx.ellipse(p.x, p.y, p.r * (1.25 + i * 0.4), p.r * (1.5 + i * 0.7), 0, 0, PI2);
+    for (var w = -0.85; w <= 0.85; w += 0.04) {
+      var wave = Math.sin(w * 18 + time * 0.06) * 3;
+      var px = p.x + Math.cos(sunAngle + w) * (radius + wave);
+      var py = p.y + Math.sin(sunAngle + w) * (radius + wave);
+      if (w < -0.84) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
     ctx.stroke();
   }
-  ctx.setLineDash([]);
+  ctx.restore();
 }
 
 function drawAurora(p) {
   if (!sw.magnet) return;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
   for (var pole = -1; pole <= 1; pole += 2) {
-    for (var i = 0; i < 40; i++) {
-      var a = pole * Math.PI / 2 + (i / 39 - 0.5) * 1.4;
-      var x = p.x + Math.cos(a) * p.r;
-      var y = p.y + Math.sin(a) * p.r;
-      var h = p.r * (0.08 + 0.14 * Math.abs(Math.sin(i * 0.5 + time * 0.04)));
-      var grad = ctx.createLinearGradient(x, y, x + Math.cos(a) * h, y + Math.sin(a) * h);
-      grad.addColorStop(0, "rgba(80,255,170,0.45)");
-      grad.addColorStop(1, "rgba(190,90,255,0)");
-      ctx.strokeStyle = grad;
-      ctx.lineWidth = p.r * 0.05;
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(x + Math.cos(a) * h, y + Math.sin(a) * h);
-      ctx.stroke();
+    var base = pole * Math.PI / 2;
+    var outer = [];
+    var inner = [];
+    for (var i = 0; i <= 60; i++) {
+      var a = base + (i / 60 - 0.5) * 1.5;
+      var h = p.r * (0.06 + 0.16 * Math.abs(Math.sin(i * 0.35 + time * 0.03)) * (0.6 + 0.4 * Math.sin(i * 0.15 - time * 0.02)));
+      outer.push({ x: p.x + Math.cos(a) * (p.r + h), y: p.y + Math.sin(a) * (p.r + h), a: a });
+      inner.push({ x: p.x + Math.cos(a) * p.r * 0.995, y: p.y + Math.sin(a) * p.r * 0.995 });
     }
+    var grad = ctx.createRadialGradient(p.x, p.y, p.r, p.x, p.y, p.r * 1.25);
+    grad.addColorStop(0, "rgba(80,255,170,0.75)");
+    grad.addColorStop(0.5, "rgba(60,200,220,0.35)");
+    grad.addColorStop(1, "rgba(170,90,255,0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(inner[0].x, inner[0].y);
+    for (var j = 1; j < inner.length; j++) ctx.lineTo(inner[j].x, inner[j].y);
+    for (var k = outer.length - 1; k >= 0; k--) ctx.lineTo(outer[k].x, outer[k].y);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(160,255,210,0.18)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (var m = 0; m < outer.length; m = m + 2) {
+      ctx.moveTo(inner[m].x, inner[m].y);
+      ctx.lineTo(outer[m].x, outer[m].y);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawFir(x, baseY, h, number, bio, dark) {
+  var sway = Math.sin(time * 0.03 + number * 1.7 + x * 0.1) * h * 0.05;
+  var green = mix(0, 1, bio / 100);
+  var r = Math.round(mix(30, 22, green) * dark);
+  var g = Math.round(mix(105, 175, green) * dark);
+  var b = Math.round(mix(70, 95, green) * dark);
+  var colorDark = "rgb(" + Math.round(r * 0.55) + "," + Math.round(g * 0.55) + "," + Math.round(b * 0.6) + ")";
+  var colorLight = "rgb(" + Math.min(255, Math.round(r * 1.25)) + "," + Math.min(255, Math.round(g * 1.25)) + "," + Math.min(255, Math.round(b * 1.2)) + ")";
+
+  ctx.fillStyle = "#3a2a1c";
+  ctx.fillRect(x - h * 0.025, baseY - h * 0.1, h * 0.05, h * 0.1);
+
+  var tiers = 5;
+  for (var t = 0; t < tiers; t++) {
+    var top = baseY - h + t * h * 0.17;
+    var bottom = top + h * 0.34;
+    var width = h * (0.1 + 0.075 * t);
+    var dx = sway * (1 - t / tiers);
+    var apexX = x + dx;
+    var bottomX = x + dx * 0.4;
+
+    var zig = [];
+    for (var k = 0; k <= 6; k++) {
+      var zx = bottomX + width - (k / 6) * width * 2;
+      var zy = bottom;
+      if (k % 2 == 1) zy = bottom - h * 0.045;
+      zig.push({ x: zx, y: zy });
+    }
+
+    ctx.fillStyle = colorDark;
+    ctx.beginPath();
+    ctx.moveTo(apexX, top);
+    for (var a = 0; a < zig.length; a++) ctx.lineTo(zig[a].x, zig[a].y);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = colorLight;
+    ctx.beginPath();
+    ctx.moveTo(apexX, top);
+    for (var c = 0; c <= 3; c++) ctx.lineTo(zig[c].x, zig[c].y);
+    ctx.lineTo(apexX, bottom - h * 0.02);
+    ctx.closePath();
+    ctx.fill();
   }
 }
 
@@ -386,21 +646,16 @@ function drawOneDome(x, y, angle, size, number, night) {
   ctx.lineTo(s, 0);
   ctx.fill();
 
-  var trees = 3 + Math.round(params.bio / 20);
-  for (var i = 0; i < trees; i++) {
-    var tx = -s * 0.8 + (i + 0.5) * (s * 1.6 / trees);
-    var th = s * (0.5 + 0.1 * ((i + number) % 4));
-    ctx.fillStyle = "#3a2a1c";
-    ctx.fillRect(tx - 1, -s * 0.12, 2, s * 0.1);
-    ctx.fillStyle = "rgb(" + Math.round(mix(40, 20, params.bio / 100)) + "," + Math.round(mix(110, 190, params.bio / 100)) + ",80)";
-    for (var j = 0; j < 3; j++) {
-      var w = th * (0.35 - j * 0.08);
-      var ty = -s * 0.1 - th * (0.2 + j * 0.22);
-      ctx.beginPath();
-      ctx.moveTo(tx, ty - th * 0.3);
-      ctx.lineTo(tx - w, ty);
-      ctx.lineTo(tx + w, ty);
-      ctx.fill();
+  var trees = 2 + Math.round(params.bio / 35);
+  for (var row = 0; row < 2; row++) {
+    for (var i = 0; i < trees; i++) {
+      var tx = -s * 0.8 + (i + 0.5 + row * 0.5) * (s * 1.6 / trees);
+      var th = s * (0.55 + 0.12 * ((i + number + row) % 4));
+      if (row == 0) {
+        drawFir(tx, -s * 0.06, th * 0.8, i + number, params.bio, 0.6);
+      } else {
+        drawFir(tx, -s * 0.02, th, i + number + 7, params.bio, 1);
+      }
     }
   }
 
@@ -460,7 +715,7 @@ function drawDomes(p) {
     d.grow = d.grow + (wanted - d.grow) * 0.06;
     if (d.grow > 0.02) {
       var angle = -Math.PI / 2 + d.angle;
-      var size = p.r * (0.09 + 0.08 * (0.3 + params.atmo / 140)) * d.grow;
+      var size = p.r * (0.105 + 0.08 * (0.3 + params.atmo / 140)) * d.grow;
       var x = p.x + Math.cos(angle) * p.r * 0.99;
       var y = p.y + Math.sin(angle) * p.r * 0.99;
       var dark = -(Math.cos(angle) * Math.cos(light) + Math.sin(angle) * -0.4);
@@ -664,10 +919,10 @@ function draw() {
   drawBackground();
   drawSun(sun);
   drawMoon(p, false);
-  drawMagnetField(p);
+  drawMagnetField(p, sun);
   drawPlanet(p);
-  domeCountShown = drawDomes(p);
   drawAurora(p);
+  domeCountShown = drawDomes(p);
   drawMoon(p, true);
   drawBots(p);
   drawMeteors(p);
